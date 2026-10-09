@@ -1,0 +1,79 @@
+/* NKG brand tokens — Brand Book "Uniting Contrasts" v1.0 (2022).
+   All seven colours are equal; FRESH (facts, services, numbers) and WARM
+   (people, stories). Text is black or white. Shared by the Stock Take and
+   Stock Management apps — keep both copies identical. */
+
+/* Type: Aptifer Sans LT Pro (the brand face) is licensed, so the apps use
+   Bricolage Grotesque — a free (SIL OFL), characterful grotesque with lining
+   figures and a 200–800 variable weight axis — bundled via
+   @fontsource-variable/bricolage-grotesque. */
+
+:root {
+  /* FRESH range */
+  --brand-neumann-green: #006330; /* Pantone 349 C, from the logo */
+  --brand-fresh-green: #69ac45;
+  --brand-fresh-turquoise: #66c8cd;
+  /* centre */
+  --brand-yellow: #f0c522;
+  /* WARM range */
+  --brand-magenta: #ed1b5b;
+  --brand-orange: #ec5624;
+  --brand-neumann-red: #ed1c24; /* Pantone 032 C, from the logo */
+  --brand-black: #000000;
+  --brand-white: #ffffff;
+
+  /* Gradients run left → right: FRESH turquoise → green, WARM orange → magenta. */
+  --gradient-fresh: linear-gradient(90deg, var(--brand-fresh-turquoise), var(--brand-fresh-green));
+  --gradient-warm: linear-gradient(90deg, var(--brand-orange), var(--brand-magenta));
+
+  --surface: var(--brand-white);
+  --surface-subtle: color-mix(in srgb, var(--brand-black) 4%, var(--brand-white));
+  --text: var(--brand-black);
+  --text-on-dark: var(--brand-white);
+  --text-muted: color-mix(in srgb, var(--brand-black) 64%, var(--brand-white));
+  --border: color-mix(in srgb, var(--brand-black) 18%, var(--brand-white));
+  --action: var(--brand-neumann-green);
+  --action-text: var(--brand-white);
+  --positive: var(--brand-fresh-green);
+  --positive-soft: color-mix(in srgb, var(--brand-fresh-green) 18%, var(--brand-white));
+  --info: var(--brand-fresh-turquoise);
+  --info-soft: color-mix(in srgb, var(--brand-fresh-turquoise) 24%, var(--brand-white));
+  --warning: var(--brand-orange);
+  --warning-soft: color-mix(in srgb, var(--brand-orange) 15%, var(--brand-white));
+  --danger: var(--brand-neumann-red);
+  --danger-soft: color-mix(in srgb, var(--brand-neumann-red) 12%, var(--brand-white));
+  --pending: var(--brand-yellow);
+  --focus: var(--brand-neumann-green);
+  --shadow-1: 0 1px 3px color-mix(in srgb, var(--brand-black) 10%, transparent);
+  --shadow-2: 0 8px 24px color-mix(in srgb, var(--brand-black) 12%, transparent);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius: 8px;
+  --brand-bar: 5px;
+  --font-sans: "Bricolage Grotesque Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* IDs (outturns, stacks, warrants) use the same face with tabular figures. */
+  --font-code: var(--font-sans);
+
+  color-scheme: light;
+}
+
+/* Brand headline: BLACK statement + light line, e.g. "THE COLORS. / FROM FRESH TO WARM." */
+.headline { margin: 0; display: flex; flex-direction: column; line-height: 1.1; }
+.headline-black { font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+.headline-light { font-weight: 300; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Logo: the official negative "NKG East Africa" lockup (white, for dark
+   surfaces), cropped to its artwork (y 37–91.5 of a 128-unit-tall canvas). */
+.logo { display: inline-flex; align-items: center; gap: 14px; color: var(--brand-white); }
+.logo-crop { --logo-h: 30px; display: block; height: var(--logo-h); overflow: hidden; flex: none; }
+.logo-crop img { display: block; height: calc(var(--logo-h) * 128 / 54.5); width: auto; margin-top: calc(var(--logo-h) * -37 / 54.5); }
+.logo-app { padding-left: 14px; border-left: 1px solid color-mix(in srgb, var(--brand-white) 45%, transparent); font-weight: 300; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+
+/* The brand bar: the FRESH gradient under the header. */
+.brand-bar { height: var(--brand-bar); background: var(--gradient-fresh); }
+

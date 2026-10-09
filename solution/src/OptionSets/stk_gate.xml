@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<optionset Name="stk_gate" localizedName="Sign-off gate" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <OptionSetType>picklist</OptionSetType>
+  <IsGlobal>1</IsGlobal>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <IsCustomizable>1</IsCustomizable>
+  <displaynames>
+    <displayname description="Sign-off gate" languagecode="1033" />
+  </displaynames>
+  <options>
+    <option value="614500000" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Operations" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500001" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Warehouse" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500002" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Trading" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500003" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Finance" languagecode="1033" />
+      </labels>
+    </option>
+  </options>
+</optionset>

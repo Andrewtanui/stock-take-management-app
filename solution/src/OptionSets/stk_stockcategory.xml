@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<optionset Name="stk_stockcategory" localizedName="Stock category" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <OptionSetType>picklist</OptionSetType>
+  <IsGlobal>1</IsGlobal>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <IsCustomizable>1</IsCustomizable>
+  <displaynames>
+    <displayname description="Stock category" languagecode="1033" />
+  </displaynames>
+  <options>
+    <option value="614500000" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Current stock" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500001" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Processing stock" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500002" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Work in progress" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500003" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Sweepings" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500004" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Loose bags" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500005" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Disputed stock" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500006" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Direct purchase (not in XBS)" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500007" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Ex-office stock" languagecode="1033" />
+      </labels>
+    </option>
+  </options>
+</optionset>

@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Role id="{844c84c8-b5c3-f111-a05a-7ced8d4931c7}" name="STK Finance" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <IsCustomizable>1</IsCustomizable>
+  <IsAutoAssigned>0</IsAutoAssigned>
+  <Description>Decides mapping changes and variances, prepares and certifies the position; signs the Finance gate.</Description>
+  <RolePrivileges>
+    <RolePrivilege name="prvAppendstk_basketmap" level="Global" />
+    <RolePrivilege name="prvAppendstk_exception" level="Global" />
+    <RolePrivilege name="prvAppendstk_mappingchange" level="Global" />
+    <RolePrivilege name="prvAppendstk_outturnmap" level="Global" />
+    <RolePrivilege name="prvAppendstk_signoff" level="Global" />
+    <RolePrivilege name="prvAppendstk_stocktake" level="Global" />
+    <RolePrivilege name="prvAppendstk_variance" level="Global" />
+    <RolePrivilege name="prvAppendTostk_assignment" level="Global" />
+    <RolePrivilege name="prvAppendTostk_basketmap" level="Global" />
+    <RolePrivilege name="prvAppendTostk_comtrasposition" level="Global" />
+    <RolePrivilege name="prvAppendTostk_countline" level="Global" />
+    <RolePrivilege name="prvAppendTostk_countsheet" level="Global" />
+    <RolePrivilege name="prvAppendTostk_directpurchase" level="Global" />
+    <RolePrivilege name="prvAppendTostk_exception" level="Global" />
+    <RolePrivilege name="prvAppendTostk_issue" level="Global" />
+    <RolePrivilege name="prvAppendTostk_mappingchange" level="Global" />
+    <RolePrivilege name="prvAppendTostk_outturnmap" level="Global" />
+    <RolePrivilege name="prvAppendTostk_packtype" level="Global" />
+    <RolePrivilege name="prvAppendTostk_recount" level="Global" />
+    <RolePrivilege name="prvAppendTostk_setting" level="Global" />
+    <RolePrivilege name="prvAppendTostk_signoff" level="Global" />
+    <RolePrivilege name="prvAppendTostk_site" level="Global" />
+    <RolePrivilege name="prvAppendTostk_stack" level="Global" />
+    <RolePrivilege name="prvAppendTostk_stocktake" level="Global" />
+    <RolePrivilege name="prvAppendTostk_variance" level="Global" />
+    <RolePrivilege name="prvAppendTostk_xbsimport" level="Global" />
+    <RolePrivilege name="prvAppendTostk_xbsline" level="Global" />
+    <RolePrivilege name="prvAssignstk_exception" level="Global" />
+    <RolePrivilege name="prvCreateSharePointData" level="Global" />
+    <RolePrivilege name="prvCreatestk_basketmap" level="Global" />
+    <RolePrivilege name="prvCreatestk_exception" level="Global" />
+    <RolePrivilege name="prvCreatestk_mappingchange" level="Global" />
+    <RolePrivilege name="prvCreatestk_outturnmap" level="Global" />
+    <RolePrivilege name="prvCreatestk_signoff" level="Global" />
+    <RolePrivilege name="prvReadSharePointData" level="Global" />
+    <RolePrivilege name="prvReadSharePointDocument" level="Global" />
+    <RolePrivilege name="prvReadstk_assignment" level="Global" />
+    <RolePrivilege name="prvReadstk_basketmap" level="Global" />
+    <RolePrivilege name="prvReadstk_comtrasposition" level="Global" />
+    <RolePrivilege name="prvReadstk_countline" level="Global" />
+    <RolePrivilege name="prvReadstk_countsheet" level="Global" />
+    <RolePrivilege name="prvReadstk_directpurchase" level="Global" />
+    <RolePrivilege name="prvReadstk_exception" level="Global" />
+    <RolePrivilege name="prvReadstk_issue" level="Global" />
+    <RolePrivilege name="prvReadstk_mappingchange" level="Global" />
+    <RolePrivilege name="prvReadstk_outturnmap" level="Global" />
+    <RolePrivilege name="prvReadstk_packtype" level="Global" />
+    <RolePrivilege name="prvReadstk_recount" level="Global" />
+    <RolePrivilege name="prvReadstk_setting" level="Global" />
+    <RolePrivilege name="prvReadstk_signoff" level="Global" />
+    <RolePrivilege name="prvReadstk_site" level="Global" />
+    <RolePrivilege name="prvReadstk_stack" level="Global" />
+    <RolePrivilege name="prvReadstk_stocktake" level="Global" />
+    <RolePrivilege name="prvReadstk_variance" level="Global" />
+    <RolePrivilege name="prvReadstk_xbsimport" level="Global" />
+    <RolePrivilege name="prvReadstk_xbsline" level="Global" />
+    <RolePrivilege name="prvWriteSharePointData" level="Global" />
+    <RolePrivilege name="prvWritestk_basketmap" level="Global" />
+    <RolePrivilege name="prvWritestk_exception" level="Global" />
+    <RolePrivilege name="prvWritestk_mappingchange" level="Global" />
+    <RolePrivilege name="prvWritestk_outturnmap" level="Global" />
+    <RolePrivilege name="prvWritestk_stocktake" level="Global" />
+    <RolePrivilege name="prvWritestk_variance" level="Global" />
+  </RolePrivileges>
+</Role>

@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "appId": "415dbc66-f07f-4819-8995-337876f7c185",
+  "appDisplayName": "Stock Take Management App",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "fbbef02c-fb2e-e56f-926c-4fe610004640",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {},
+  "databaseReferences": {}
+}

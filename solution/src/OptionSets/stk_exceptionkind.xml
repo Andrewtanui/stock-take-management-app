@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<optionset Name="stk_exceptionkind" localizedName="Exception kind" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <OptionSetType>picklist</OptionSetType>
+  <IsGlobal>1</IsGlobal>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <IsCustomizable>1</IsCustomizable>
+  <displaynames>
+    <displayname description="Exception kind" languagecode="1033" />
+  </displaynames>
+  <options>
+    <option value="614500000" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Split lot" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500001" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Unposted receipt" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500002" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Unposted gate-out" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500003" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Duplicate entry" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500004" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Mapping error" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500005" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Pocket / unit difference" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500006" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Wrong basket on sale" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500007" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="In transit" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500008" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Cancelled contract" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500009" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Not yet known" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500010" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Master data" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500011" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Third party" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500012" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Direct purchase" languagecode="1033" />
+      </labels>
+    </option>
+  </options>
+</optionset>

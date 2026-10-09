@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<optionset Name="stk_stocktakestatus" localizedName="Stock take status" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <OptionSetType>picklist</OptionSetType>
+  <IsGlobal>1</IsGlobal>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <IsCustomizable>1</IsCustomizable>
+  <displaynames>
+    <displayname description="Stock take status" languagecode="1033" />
+  </displaynames>
+  <options>
+    <option value="614500000" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Count in progress" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500001" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Reconciliation" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500002" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Sign-off" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500003" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Completed" languagecode="1033" />
+      </labels>
+    </option>
+  </options>
+</optionset>

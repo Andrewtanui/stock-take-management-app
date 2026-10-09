@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<optionset Name="stk_countreason" localizedName="Counter's reason" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <OptionSetType>picklist</OptionSetType>
+  <IsGlobal>1</IsGlobal>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <IsCustomizable>1</IsCustomizable>
+  <displaynames>
+    <displayname description="Counter's reason" languagecode="1033" />
+  </displaynames>
+  <options>
+    <option value="614500000" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Part of the lot is at another location" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500001" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Bags moved here, not yet received in XBS" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500002" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Bags left this stack, not yet posted out" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500003" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Torn or re-bagged bags" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500004" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Pocket weighed differently" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500005" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Tag missing or unreadable" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500006" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Stack blocked, couldn't reach every bag" languagecode="1033" />
+      </labels>
+    </option>
+    <option value="614500007" ExternalValue="" IsHidden="0">
+      <labels>
+        <label description="Not sure, supervisor to check" languagecode="1033" />
+      </labels>
+    </option>
+  </options>
+</optionset>

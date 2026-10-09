@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Role id="{74e08bc2-b5c3-f111-a05a-7ced8d4931c7}" name="STK Counter" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <IsCustomizable>1</IsCustomizable>
+  <IsAutoAssigned>0</IsAutoAssigned>
+  <Description>Counts on the floor with the Stock Take app.</Description>
+  <RolePrivileges>
+    <RolePrivilege name="prvAppendstk_countline" level="Basic" />
+    <RolePrivilege name="prvAppendstk_countsheet" level="Basic" />
+    <RolePrivilege name="prvAppendstk_issue" level="Basic" />
+    <RolePrivilege name="prvAppendstk_recount" level="Basic" />
+    <RolePrivilege name="prvAppendstk_stack" level="Global" />
+    <RolePrivilege name="prvAppendTostk_assignment" level="Global" />
+    <RolePrivilege name="prvAppendTostk_basketmap" level="Global" />
+    <RolePrivilege name="prvAppendTostk_countline" level="Global" />
+    <RolePrivilege name="prvAppendTostk_countsheet" level="Basic" />
+    <RolePrivilege name="prvAppendTostk_issue" level="Basic" />
+    <RolePrivilege name="prvAppendTostk_outturnmap" level="Global" />
+    <RolePrivilege name="prvAppendTostk_packtype" level="Global" />
+    <RolePrivilege name="prvAppendTostk_recount" level="Basic" />
+    <RolePrivilege name="prvAppendTostk_setting" level="Global" />
+    <RolePrivilege name="prvAppendTostk_site" level="Global" />
+    <RolePrivilege name="prvAppendTostk_stack" level="Global" />
+    <RolePrivilege name="prvAppendTostk_stocktake" level="Global" />
+    <RolePrivilege name="prvAppendTostk_xbsimport" level="Global" />
+    <RolePrivilege name="prvAppendTostk_xbsline" level="Global" />
+    <RolePrivilege name="prvCreateSharePointData" level="Global" />
+    <RolePrivilege name="prvCreatestk_countline" level="Basic" />
+    <RolePrivilege name="prvCreatestk_countsheet" level="Basic" />
+    <RolePrivilege name="prvCreatestk_issue" level="Basic" />
+    <RolePrivilege name="prvCreatestk_stack" level="Global" />
+    <RolePrivilege name="prvReadSharePointData" level="Global" />
+    <RolePrivilege name="prvReadSharePointDocument" level="Global" />
+    <RolePrivilege name="prvReadstk_assignment" level="Global" />
+    <RolePrivilege name="prvReadstk_basketmap" level="Global" />
+    <RolePrivilege name="prvReadstk_countline" level="Global" />
+    <RolePrivilege name="prvReadstk_countsheet" level="Basic" />
+    <RolePrivilege name="prvReadstk_issue" level="Basic" />
+    <RolePrivilege name="prvReadstk_outturnmap" level="Global" />
+    <RolePrivilege name="prvReadstk_packtype" level="Global" />
+    <RolePrivilege name="prvReadstk_recount" level="Basic" />
+    <RolePrivilege name="prvReadstk_setting" level="Global" />
+    <RolePrivilege name="prvReadstk_site" level="Global" />
+    <RolePrivilege name="prvReadstk_stack" level="Global" />
+    <RolePrivilege name="prvReadstk_stocktake" level="Global" />
+    <RolePrivilege name="prvReadstk_xbsimport" level="Global" />
+    <RolePrivilege name="prvReadstk_xbsline" level="Global" />
+    <RolePrivilege name="prvWriteSharePointData" level="Global" />
+    <RolePrivilege name="prvWritestk_countline" level="Basic" />
+    <RolePrivilege name="prvWritestk_countsheet" level="Basic" />
+    <RolePrivilege name="prvWritestk_issue" level="Basic" />
+    <RolePrivilege name="prvWritestk_recount" level="Basic" />
+    <RolePrivilege name="prvWritestk_stack" level="Global" />
+  </RolePrivileges>
+</Role>
