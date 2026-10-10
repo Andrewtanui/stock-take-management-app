@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { DIRECT_PURCHASES, allLines, sum } from "../data/repository";
+import { allLines, sum } from "../data/repository";
 import type { DirectPurchase } from "../data/types";
 import { useStore } from "../data/store";
 import { Chip, Code, Dialog, PageHead, Stat, Tabs, n } from "../ui/kit";
@@ -16,7 +16,7 @@ function flags(d: DirectPurchase) {
 
 export default function DirectPurchases() {
   const store = useStore();
-  const [rows, setRows] = useState(DIRECT_PURCHASES);
+  const rows = store.directPurchases;
   const [tab, setTab] = useState<"flagged" | "all">("flagged");
   const [adding, setAdding] = useState(false);
   const shown = rows.filter((d) => tab === "all" || flags(d).length);
@@ -97,9 +97,8 @@ export default function DirectPurchases() {
         <AddDialog
           onClose={() => setAdding(false)}
           onSave={(d) => {
-            setRows((r) => [d, ...r]);
+            store.addDirectPurchase(d);
             setAdding(false);
-            store.flash(`${d.contract} added.`);
           }}
         />
       )}

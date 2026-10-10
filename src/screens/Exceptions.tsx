@@ -7,7 +7,6 @@ import { Chip, PageHead, Tabs, n, type Tone } from "../ui/kit";
 
 type F = "open" | "overdue" | "escalated" | "closed" | "all";
 const STATUS_TONE: Record<Exception["status"], Tone> = { Open: "warn", "In progress": "info", Escalated: "crit", Closed: "ok" };
-const OWNERS = ["Peter M.", "Joseph O.", "Mary W.", "Dennis I.", "Samuel K."];
 
 function due(e: Exception) {
   if (e.status === "Closed") return <span className="muted">Closed</span>;
@@ -138,7 +137,7 @@ export default function Exceptions() {
                 <label className="field">
                   <span className="field-label">Owner</span>
                   <select className="input" value={ex.owner} onChange={(e) => store.updateException(ex.id, { owner: e.target.value })}>
-                    {OWNERS.map((o) => (
+                    {[...new Set([ex.owner, ...store.people])].map((o) => (
                       <option key={o}>{o}</option>
                     ))}
                   </select>
@@ -166,7 +165,7 @@ export default function Exceptions() {
                   className="btn btn-primary"
                   disabled={!resolution.trim()}
                   onClick={() => {
-                    store.updateException(ex.id, { status: "Closed" });
+                    store.updateException(ex.id, { status: "Closed", resolution: resolution.trim() });
                     store.flash(`${ex.id} closed.`);
                     setResolution("");
                   }}

@@ -8,8 +8,124 @@
   "description": " ",
   "buildPath": "./dist",
   "buildEntryPoint": "index.html",
-  "localAppUrl": "http://localhost:3000",
+  "localAppUrl": "http://localhost:3001",
   "logoPath": "Default",
   "connectionReferences": {},
-  "databaseReferences": {}
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "warehouses": {
+          "entitySetName": "stk_sites",
+          "logicalName": "stk_site",
+          "isHidden": false
+        },
+        "packingtypes": {
+          "entitySetName": "stk_packtypes",
+          "logicalName": "stk_packtype",
+          "isHidden": false
+        },
+        "settings": {
+          "entitySetName": "stk_settings",
+          "logicalName": "stk_setting",
+          "isHidden": false
+        },
+        "xbsimports": {
+          "entitySetName": "stk_xbsimports",
+          "logicalName": "stk_xbsimport",
+          "isHidden": false
+        },
+        "xbslines": {
+          "entitySetName": "stk_xbslines",
+          "logicalName": "stk_xbsline",
+          "isHidden": false
+        },
+        "comtraspositions": {
+          "entitySetName": "stk_comtraspositions",
+          "logicalName": "stk_comtrasposition",
+          "isHidden": false
+        },
+        "mappingchanges": {
+          "entitySetName": "stk_mappingchanges",
+          "logicalName": "stk_mappingchange",
+          "isHidden": false
+        },
+        "basketmappings": {
+          "entitySetName": "stk_basketmaps",
+          "logicalName": "stk_basketmap",
+          "isHidden": false
+        },
+        "outturnmappings": {
+          "entitySetName": "stk_outturnmaps",
+          "logicalName": "stk_outturnmap",
+          "isHidden": false
+        },
+        "stocktakes": {
+          "entitySetName": "stk_stocktakes",
+          "logicalName": "stk_stocktake",
+          "isHidden": false
+        },
+        "assignments": {
+          "entitySetName": "stk_assignments",
+          "logicalName": "stk_assignment",
+          "isHidden": false
+        },
+        "countsheets": {
+          "entitySetName": "stk_countsheets",
+          "logicalName": "stk_countsheet",
+          "isHidden": false
+        },
+        "stacks": {
+          "entitySetName": "stk_stacks",
+          "logicalName": "stk_stack",
+          "isHidden": false
+        },
+        "variances": {
+          "entitySetName": "stk_variances",
+          "logicalName": "stk_variance",
+          "isHidden": false
+        },
+        "recounts": {
+          "entitySetName": "stk_recounts",
+          "logicalName": "stk_recount",
+          "isHidden": false
+        },
+        "countlines": {
+          "entitySetName": "stk_countlines",
+          "logicalName": "stk_countline",
+          "isHidden": false
+        },
+        "exceptions": {
+          "entitySetName": "stk_exceptions",
+          "logicalName": "stk_exception",
+          "isHidden": false
+        },
+        "sign_offs": {
+          "entitySetName": "stk_signoffs",
+          "logicalName": "stk_signoff",
+          "isHidden": false
+        },
+        "directpurchases": {
+          "entitySetName": "stk_directpurchases",
+          "logicalName": "stk_directpurchase",
+          "isHidden": false
+        },
+        "problemreports": {
+          "entitySetName": "stk_issues",
+          "logicalName": "stk_issue",
+          "isHidden": false
+        },
+        "users": {
+          "entitySetName": "systemusers",
+          "logicalName": "systemuser",
+          "isHidden": false
+        },
+        "audits": {
+          "entitySetName": "audits",
+          "logicalName": "audit",
+          "isHidden": false
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
 }

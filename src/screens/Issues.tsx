@@ -5,7 +5,6 @@ import type { Issue, RootCause } from "../data/types";
 import { Chip, PageHead, Tabs, type Tone } from "../ui/kit";
 
 const TONE: Record<Issue["status"], Tone> = { Open: "warn", "In progress": "info", Resolved: "ok" };
-const OWNERS = ["Peter M.", "Joseph O.", "Michael A. (IT)", "Mary W."];
 const CAUSES: (RootCause | "")[] = ["", "Split lot", "Unposted receipt", "Duplicate entry", "Mapping error", "Pocket / unit difference", "In transit", "Not yet known"];
 
 export default function Issues() {
@@ -68,7 +67,7 @@ export default function Issues() {
                 <span className="field-label">Owner</span>
                 <select className="input" value={it.owner ?? ""} onChange={(e) => store.updateIssue(it.id, { owner: e.target.value || undefined, status: it.status === "Open" ? "In progress" : it.status })}>
                   <option value="">Not assigned</option>
-                  {OWNERS.map((o) => (
+                  {[...new Set([...(it.owner ? [it.owner] : []), ...store.people])].map((o) => (
                     <option key={o}>{o}</option>
                   ))}
                 </select>

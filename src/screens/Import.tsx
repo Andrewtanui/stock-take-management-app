@@ -1,19 +1,40 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CircleAlert, CircleCheck, CircleX, Download, FileSpreadsheet, Upload } from "lucide-react";
-import { IMPORTS, can, importChecks } from "../data/repository";
+import { IMPORTS, SITES, can, importChecks } from "../data/repository";
+import { readXbsFiles, type XbsUpload } from "../data/xbs-parse";
 import { useStore } from "../data/store";
 import { Chip, Code, PageHead, ReadOnly, type Tone } from "../ui/kit";
 
-const FILES = ["9_XBS - Current Stock - 02-Mar-2026 - 085230.xlsx", "9_XBS - Current Stock - 02-Mar-2026 - 085250.xlsx"];
 const STATUS: Record<string, Tone> = { Imported: "ok", Validated: "info", Failed: "crit", Superseded: "neutral" };
 
 export default function Import() {
   const store = useStore();
   const allowed = can(store.role, "Import XBS stock");
-  const [files, setFiles] = useState<string[]>([]);
+  const picker = useRef<HTMLInputElement>(null);
+  const [upload, setUpload] = useState<XbsUpload | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [step, setStep] = useState<"pick" | "checked" | "done">("pick");
   const [open, setOpen] = useState<string | null>(null);
-  const checks = importChecks();
+  const files = upload?.files ?? [];
+  const checks = upload ? importChecks(upload.lines, upload.unknownWarehouses) : [];
+
+  const choose = async (list: FileList | null) => {
+    if (!list?.length) return;
+    setReading(true);
+    setReadError(null);
+    setStep("pick");
+    try {
+      setUpload(await readXbsFiles([...list], SITES));
+    } catch (e) {
+      setUpload(null);
+      setReadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReading(false);
+      if (picker.current) picker.current.value = "";
+    }
+  };
   const fails = checks.filter((c) => c.result === "fail").length;
   const warns = checks.filter((c) => c.result === "warn").length;
 
@@ -39,10 +60,12 @@ export default function Import() {
               <strong>Current Stock – Batch Wise Detail</strong> and <strong>Blocked for Processing</strong>, exported from XBS as
               Excel.
             </p>
-            <button className="btn" onClick={() => setFiles(FILES)}>
-              Choose files
+            <input ref={picker} type="file" accept=".xlsx" multiple hidden onChange={(e) => choose(e.target.files)} />
+            <button className="btn" disabled={reading} onClick={() => picker.current?.click()}>
+              {reading ? "Reading…" : "Choose files"}
             </button>
           </div>
+          {readError && <p className="readonly">{readError}</p>}
           {files.length > 0 && (
             <ul className="file-list">
               {files.map((f) => (
@@ -50,6 +73,10 @@ export default function Import() {
                   <FileSpreadsheet size={18} aria-hidden /> {f}
                 </li>
               ))}
+              <li className="muted small">
+                {upload!.lines.length.toLocaleString("en-GB")} rows
+                {upload!.snapshotAt ? ` · XBS snapshot ${upload!.snapshotAt.toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
+              </li>
             </ul>
           )}
           <button className="btn btn-primary" disabled={!files.length || step !== "pick"} onClick={() => setStep("checked")}>
@@ -107,13 +134,24 @@ export default function Import() {
           {step === "checked" ? (
             <button
               className="btn btn-primary"
-              disabled={fails > 0}
-              onClick={() => {
-                setStep("done");
-                store.flash(`Imported 1,750 rows. ${warns} warnings sent to Exceptions.`);
+              disabled={fails > 0 || !!progress}
+              onClick={async () => {
+                const ok = await store.importXbs(
+                  {
+                    files,
+                    snapshotAt: upload?.snapshotAt?.toISOString(),
+                    lines: upload!.lines,
+                    warnings: warns,
+                    fails,
+                    checks: JSON.stringify(checks.map((c) => ({ id: c.id, label: c.label, result: c.result, detail: c.detail, count: c.rows.length }))),
+                  },
+                  (done, total) => setProgress({ done, total }),
+                );
+                setProgress(null);
+                if (ok) setStep("done");
               }}
             >
-              3. Import as expected stock
+              {progress ? `Importing… ${progress.done.toLocaleString("en-GB")} of ${progress.total.toLocaleString("en-GB")} rows` : "3. Import as expected stock"}
             </button>
           ) : (
             <p className="readonly ok">

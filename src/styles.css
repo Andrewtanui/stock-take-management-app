@@ -368,3 +368,18 @@ textarea.input { resize: vertical; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* ---------- start-up: loading and load error ---------- */
+.splash {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 24px;
+  background: var(--brand-neumann-green); color: var(--brand-white); text-align: center;
+}
+.splash-logo { width: 240px; height: auto; }
+.splash p { opacity: 0.9; }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--brand-white) 30%, transparent); border-top-color: var(--brand-white); animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.splash-card { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px; border-radius: var(--r-lg); background: var(--surface); color: var(--text); }
+.splash-card svg { color: var(--brand-neumann-red); }
+.splash-card p { color: var(--ink-2); font-size: 14px; opacity: 1; }
+.btn-lg { height: 48px; font-size: 15px; }
+.btn-block { width: 100%; }

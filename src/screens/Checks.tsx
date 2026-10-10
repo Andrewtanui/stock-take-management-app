@@ -2,7 +2,19 @@ import { useState } from "react";
 import { ChevronDown, UserRound } from "lucide-react";
 import { checks } from "../data/repository";
 import { useStore } from "../data/store";
+import type { Dept } from "../data/types";
 import { Chip, Code, PageHead, n } from "../ui/kit";
+
+/** What kind of exception each pre-count check raises. */
+const CHECK_KIND: Record<string, string> = {
+  stuffed: "Unposted gate-out",
+  cancelled: "Cancelled contract",
+  shipped: "Unposted gate-out",
+  ceiling: "Third party",
+  aged: "Third party",
+  split: "Split lot",
+};
+const DEPTS: Dept[] = ["Operations", "Warehouse", "Trading", "Finance", "Logistics", "Quality"];
 
 const SEV = {
   high: { label: "Fix before counting", tone: "crit" },
@@ -61,7 +73,14 @@ export default function Checks() {
                       disabled={assigned[c.id]}
                       onClick={() => {
                         setAssigned((m) => ({ ...m, [c.id]: true }));
-                        store.flash(`Raised in Exceptions and sent to ${c.owner} in Teams.`);
+                        store.raiseException({
+                          title: `${c.title}: ${n(c.count)} ${c.count === 1 ? c.unit.replace(/s$/, "") : c.unit}`,
+                          kind: CHECK_KIND[c.id] ?? "Not yet known",
+                          ref: "Pre-count check",
+                          dept: (DEPTS.includes(c.owner as Dept) ? c.owner : "Operations") as Dept,
+                          bags: c.bags,
+                          source: "Pre-count check",
+                        });
                       }}
                     >
                       <UserRound size={16} aria-hidden /> {assigned[c.id] ? `Sent to ${c.owner}` : `Raise exception for ${c.owner}`}

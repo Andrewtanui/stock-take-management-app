@@ -9,14 +9,20 @@
     "typecheck": "tsc -b",
     "dv:schema": "node scripts/dataverse/create-schema.mjs",
     "dv:schema:dry": "node scripts/dataverse/create-schema.mjs --dry-run",
-    "dv:roles": "node scripts/dataverse/create-roles.mjs"
+    "dv:roles": "node scripts/dataverse/create-roles.mjs",
+    "check:shared": "node scripts/check-shared.mjs",
+    "dv:seed": "node scripts/dataverse/seed.mjs",
+    "dev:dv": "vite --mode dataverse",
+    "build:dv": "tsc -b && vite build --mode dataverse",
+    "dv:flows": "node scripts/dataverse/create-flows.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@microsoft/power-apps": "^1.5.0",
     "lucide-react": "^1.52.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "read-excel-file": "^9.3.12"
   },
   "private": true,
   "type": "module",
@@ -31,5 +37,8 @@
     "typescript": "5.6",
     "vite": "^6.4.4",
     "vite-plugin-singlefile": "^2.3.3"
+  },
+  "allowScripts": {
+    "keytar@7.9.0": true
   }
 }

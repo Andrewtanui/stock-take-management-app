@@ -157,6 +157,8 @@ export interface Exception {
   escalation: number; // 0 = owner, 1 = HOD, 2 = Country Finance Manager
   bags: number;
   source: "Count" | "Import" | "Pre-count check" | "Reconciliation";
+  /** How it was fixed; required to close. */
+  resolution?: string;
 }
 
 export type PrimaryBasket = "Plus" | "FAQ" | "Grinder";
