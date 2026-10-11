@@ -1,6 +1,6 @@
 // Creates (or updates) the Stage 4 flows and their connection references in IBKYStockTake,
 // then turns the flows on.
-//   npm run dv:flows -- --team <teamId> --channel <channelId> [--dataverse <connId>] [--teams <connId>] [--approvals <connId>] [--dry-run]
+//   npm run dv:flows -- --team <teamId> --channel <channelId> [--dataverse <connId>] [--teams <connId>] [--approvals <connId>] [--outlook <connId>] [--dry-run]
 // Connection ids: `npx pa connection list`. Team/channel: from a Teams "Get link to channel" URL.
 import { dv } from "./api.mjs";
 import { CONNECTION_REFERENCES, flows } from "./flows.mjs";
@@ -12,7 +12,7 @@ const arg = (k) => {
 };
 const dry = process.argv.includes("--dry-run");
 const cfg = { teamId: arg("team"), channelId: arg("channel") };
-const conn = { dataverse: arg("dataverse"), teams: arg("teams"), approvals: arg("approvals") };
+const conn = { dataverse: arg("dataverse"), teams: arg("teams"), approvals: arg("approvals"), outlook: arg("outlook") };
 if (!cfg.teamId || !cfg.channelId) throw new Error("--team and --channel are required (from the Teams channel link)");
 
 const esc = (s) => s.replace(/'/g, "''");

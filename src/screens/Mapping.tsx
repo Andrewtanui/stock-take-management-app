@@ -152,13 +152,13 @@ export default function Mapping() {
           </div>
           <dl className="kv">
             <dt>Units</dt>
-            <dd>Full bags + pocket bags</dd>
+            <dd>Full bags + 1 if there's a pocket</dd>
             <dt>Weight</dt>
             <dd>Full bags × pack kg + pocket kg</dd>
             <dt>60 kg equivalents</dt>
             <dd>Weight ÷ 60</dd>
             <dt>Pocket rule</dt>
-            <dd>Each pocket weighs less than a full bag of its pack type</dd>
+            <dd>At most one pocket per outturn at a location (each place of a split lot has its own); any weight above 0 kg</dd>
             <dt>Match tolerance</dt>
             <dd>0 units and ±0.05 kg</dd>
           </dl>

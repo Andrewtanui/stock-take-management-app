@@ -60,6 +60,7 @@ export interface Stk_variancesBase {
   stk_expectedkg?: number;
   stk_expectedunits?: number;
   stk_grade?: string;
+  stk_lotkey?: string;
   stk_name: string;
   stk_outturn?: string;
   "stk_site@odata.bind": string;

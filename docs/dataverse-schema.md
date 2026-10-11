@@ -117,7 +117,7 @@ primary name column. **AK** = alternate key. Lookups are N:1 unless stated.
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK, AK | Text 60 | Key |
-| `stk_value` | Text 200 | Value |
+| `stk_value` | Text 2000 | Value (JSON allowed, e.g. HeadsOfDepartment) |
 | `stk_description` | Text 400 | |
 
 Seed keys: `TargetNetVariancePct` 0.10 · `SignOffWorkingDays` 7 ·

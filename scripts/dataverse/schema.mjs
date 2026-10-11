@@ -98,7 +98,7 @@ export const TABLES = [
   {
     name: "stk_setting", display: "Setting", plural: "Settings", own: "org", primary: ["Key", 60],
     cols: [
-      ["stk_value", "Value", s(200)],
+      ["stk_value", "Value", s(2000)],
       ["stk_description", "Description", s(400)],
     ],
     keys: [["stk_name"]],
@@ -255,6 +255,8 @@ export const TABLES = [
       ["stk_cause", "Cause", choice("stk_rootcause")],
       ["stk_state", "State", choice("stk_variancestate")],
       ["stk_decidedon", "Decided on", dt()],
+      // One variance per lot: "<stock take id>|<site>|<stack, or empty at third parties>|<batch>".
+      ["stk_lotkey", "Lot key", s(300)],
     ],
     lookups: [
       ["stk_stocktake", "Stock take", "stk_stocktake", true],
@@ -263,6 +265,7 @@ export const TABLES = [
       ["stk_countline", "Count line", "stk_countline"],
       ["stk_decidedby", "Decided by", "systemuser"],
     ],
+    keys: [["stk_lotkey"]],
   },
   {
     name: "stk_recount", display: "Recount", plural: "Recounts", own: "user", primary: ["Reference", 30],

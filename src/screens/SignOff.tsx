@@ -25,12 +25,15 @@ export default function SignOff() {
   ].filter(Boolean) as string[];
   const blocked = nextIdx === 0 && blockers.length > 0;
   const isPreparer = store.me === PREPARER;
+  // The SOP clock only runs once counting is over.
+  const status = store.stockTakes[0]?.status;
+  const clockRunning = status === "Reconciliation" || status === "Sign-off";
 
   return (
     <div className="page">
       <PageHead
         title="Sign-off"
-        sub={`Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}. The SOP asks for sign-off within ${TODAY.signOffTarget} working days of the count. Each gate signs in order; the next signer is told in Teams.`}
+        sub={`${clockRunning ? `Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}.` : "Not started — counting is still open."} The SOP asks for sign-off within ${TODAY.signOffTarget} working days of the count. Each gate signs in order; the next signer is told in Teams.`}
         actions={
           <>
             <button className="btn">

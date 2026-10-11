@@ -24,7 +24,10 @@ export default function Overview() {
   const openEx = store.exceptions.filter((e) => e.status !== "Closed");
   const overdue = openEx.filter((e) => e.dueDays < 0).length;
   const signed_ = CHAIN.filter((c) => store.signatures[c.role]).length;
-  const stage = signed_ === CHAIN.length ? 5 : st.status === "Reconciliation" ? 3 : 1;
+  const stage = st.status === "Completed" || signed_ === CHAIN.length ? 5 : st.status === "Sign-off" ? 4 : st.status === "Reconciliation" ? 3 : 1;
+  // The SOP clock (sign-off within N working days of the count) only matters once counting is over.
+  const clockRunning = st.status === "Reconciliation" || st.status === "Sign-off";
+  const late = clockRunning && TODAY.signOffDay > TODAY.signOffTarget;
 
   const items: { text: string; page: Page; n: number }[] = [
     { text: "count sheets waiting for approval", page: "approvals", n: pendingSheets },
@@ -59,7 +62,16 @@ export default function Overview() {
         <Stat label="Bags counted" value={`${Math.round((done / total) * 100)}%`} note={`${n(done)} of ${n(total)}`} />
         <Stat label="Count sheets" value={`${store.sheets.filter((s) => s.status === "Approved").length} / ${store.sheets.length}`} note={`${pendingSheets} waiting · ${rejected} sent back`} />
         <Stat label="Net variance vs XBS" value={`${signed(net, 2)}%`} tone={Math.abs(net) <= TARGET_PCT ? "ok" : "crit"} note={`Target ±${TARGET_PCT}% · ${signed(phys - xbs)} bags`} />
-        <Stat label="Sign-off" value={`Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}`} note={`${signed_} of ${CHAIN.length} gates signed`} tone={TODAY.signOffDay <= TODAY.signOffTarget ? undefined : "crit"} />
+        <Stat
+          label="Sign-off"
+          value={st.status === "Completed" ? "Done" : clockRunning ? `Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}` : "Not started"}
+          note={
+            clockRunning || st.status === "Completed"
+              ? `${signed_} of ${CHAIN.length} gates signed`
+              : `Due ${TODAY.signOffTarget} working days after the count`
+          }
+          tone={late ? "crit" : undefined}
+        />
       </div>
 
       <div className="grid-2">

@@ -668,6 +668,10 @@ type LineRow = { stk_countlineid: string; _stk_stack_value?: string; stk_batch?:
  * Decided variances are left alone, except that a recount which now matches
  * XBS is accepted automatically.
  */
+/** Dataverse refused a create because a row with the same alternate key exists. */
+const isDuplicateKey = (e?: { message?: string; code?: string } | Error) =>
+  /0x80060892|Entity Key .* violated|matching key|duplicate record|already exists/i.test(`${(e as { code?: string })?.code ?? ""} ${e?.message ?? ""}`);
+
 async function syncVariances(
   drafts: ReturnType<typeof draftVariances>,
   stacks: StackRow[],
@@ -677,14 +681,18 @@ async function syncVariances(
 ) {
   const existing = await all(
     (o) => Stk_variancesService.getAll(o),
-    { select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_countedunits", "stk_expectedunits", "stk_state", "_stk_countline_value"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` },
+    { select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_countedunits", "stk_expectedunits", "stk_state", "_stk_countline_value", "stk_lotkey"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` },
     "read variances",
   );
   const siteCodeOf = new Map([...siteIdOf.entries()].map(([k, v]) => [v, k]));
   const stackName = new Map(stacks.map((s) => [s.stk_stackid, s.stk_name]));
   const stackId = (site: SiteCode, name: string) => stacks.find((s) => s._stk_site_value === siteIdOf.get(site) && s.stk_name === name)?.stk_stackid;
   const lineBatch = new Map(lines.map((l) => [l.stk_countlineid, l.stk_batch ?? ""]));
+  // stk_lotkey is "<stock take id>|<draft key>" and unique in Dataverse, so two
+  // people loading at once can't create the same variance twice.
+  const lotKey = (draftKey: string) => `${ids.stockTakeId}|${draftKey}`;
   const keyOf = (v: (typeof existing)[number]) => {
+    if (v.stk_lotkey?.startsWith(`${ids.stockTakeId}|`)) return v.stk_lotkey.slice(ids.stockTakeId.length + 1);
     const site = siteCodeOf.get(v._stk_site_value!)!;
     return `${site}|${thirdParty.has(site) ? "" : (stackName.get(v._stk_stack_value!) ?? "")}|${lineBatch.get(v._stk_countline_value!) ?? v.stk_outturn ?? ""}`;
   };
@@ -722,18 +730,19 @@ async function syncVariances(
     const had = byKey.get(d.key);
     if (!had) {
       const sid = stackId(d.site, d.stack);
-      unwrap(
-        await Stk_variancesService.create({
-          stk_name: `V-${String(++next).padStart(4, "0")}`,
-          statecode: 0,
-          stk_state: open,
-          ...fields,
-          "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
-          "stk_site@odata.bind": bind("stk_sites", siteIdOf.get(d.site)!),
-          ...(sid ? { "stk_stack@odata.bind": bind("stk_stacks", sid) } : {}),
-        } as never),
-        `record a variance for ${d.outturn}`,
-      );
+      const res = await Stk_variancesService.create({
+        stk_name: `V-${String(++next).padStart(4, "0")}`,
+        statecode: 0,
+        stk_state: open,
+        stk_lotkey: lotKey(d.key),
+        ...fields,
+        "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+        "stk_site@odata.bind": bind("stk_sites", siteIdOf.get(d.site)!),
+        ...(sid ? { "stk_stack@odata.bind": bind("stk_stacks", sid) } : {}),
+      } as never);
+      // Someone else's load created it a moment ago: theirs stands.
+      if (!res.success && isDuplicateKey(res.error)) next--;
+      else unwrap(res, `record a variance for ${d.outturn}`);
     } else if ((had.stk_state === open || had.stk_state === recountSent) && (had.stk_countedunits !== d.countedUnits || had.stk_expectedunits !== d.expectedUnits)) {
       unwrap(await Stk_variancesService.update(had.stk_varianceid, fields as never), `update variance ${had.stk_name}`);
     }

@@ -25,6 +25,11 @@ export const CONNECTION_REFERENCES = {
     displayName: "IBKY Stock Take · Approvals",
     api: "shared_approvals",
   },
+  outlook: {
+    logicalName: "stk_outlook",
+    displayName: "IBKY Stock Take · Outlook",
+    api: "shared_office365",
+  },
 };
 
 const SHEET = { inProgress: 614500000, submitted: 614500001, approved: 614500002, sentBack: 614500003 };
@@ -32,7 +37,17 @@ const ISSUE = { open: 614500000, inProgress: 614500001, resolved: 614500002 };
 const IMPORT = { imported: 614500001 };
 const CHANGE = { pending: 614500000, approved: 614500001, rejected: 614500002, basket: 614500000 };
 const PRIMARY_BASKET = { Plus: 614500000, FAQ: 614500001, Grinder: 614500002 };
-const EXC = { open: 614500000, ownerLevel: 614500000, sourceImport: 614500001, kindUnknown: 614500009, deptOperations: 614500000 };
+const SIGNOFF = { signed: 614500000, sentBack: 614500001, finance: 614500003 };
+const STOCKTAKE = { completed: 614500003 };
+/** F4: calendar days overdue before each escalation step. */
+const ESCALATE = { hodAfterDays: 3, cfmAfterDays: 7 };
+/** Gate just signed → who signs next (CHAIN order: Operations → Warehouse → Trading → Finance). */
+const NEXT_GATE = {
+  614500000: "Warehouse — physical position by warehouse",
+  614500001: "Trading — contracts, blocks and basket allocation",
+  614500002: "Finance — certifies the stock position",
+};
+const EXC = { closed: 614500003, escalated: 614500002, open: 614500000, ownerLevel: 614500000, hodLevel: 614500001, cfmLevel: 614500002, sourceImport: 614500001, kindUnknown: 614500009, deptOperations: 614500000 };
 
 /** Import check (id from importChecks) → exception kind and department. */
 const IMPORT_WARNING_RULES = {
@@ -283,6 +298,226 @@ export function flows(cfg) {
             `<p>Why: ${trig("stk_why")}</p>` +
             `<p><a href="${APP_LINK.counter}">Open the stock take app → Recounts</a></p>`,
           "Get_stack",
+        ),
+      }),
+    },
+    {
+      name: "IBKY F4 · Exception escalation (weekdays 07:00)",
+      description: "Each weekday morning: remind owners of overdue exceptions; 3+ days overdue → head of department; 7+ days → Country Finance Manager.",
+      data: clientdata(
+        "Every_weekday_morning",
+        {
+          type: "Recurrence",
+          recurrence: {
+            frequency: "Week",
+            interval: 1,
+            schedule: { weekDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], hours: ["7"], minutes: [0] },
+            timeZone: "E. Africa Standard Time",
+          },
+        },
+        {
+          Get_heads: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'HeadsOfDepartment'", top: 1 }, null),
+          Get_CFM: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'CountryFinanceManager'", top: 1 }, "Get_heads"),
+          Heads: { type: "Compose", inputs: "@json(coalesce(first(outputs('Get_heads')?['body/value'])?['stk_value'], '{}'))", runAfter: after("Get_CFM") },
+          Get_overdue: listRows(
+            "stk_exceptions",
+            {
+              select: "stk_exceptionid,stk_name,stk_duedate,stk_escalationlevel,stk_department,_ownerid_value",
+              filter: `stk_status ne ${EXC.closed} and stk_duedate lt @{formatDateTime(utcNow(), 'yyyy-MM-dd')}`,
+            },
+            "Heads",
+          ),
+          For_each_overdue: {
+            type: "Foreach",
+            foreach: "@outputs('Get_overdue')?['body/value']",
+            runtimeConfiguration: { concurrency: { repetitions: 1 } },
+            actions: {
+              Days_overdue: {
+                type: "Compose",
+                inputs: "@div(sub(ticks(startOfDay(utcNow())), ticks(items('For_each_overdue')?['stk_duedate'])), 864000000000)",
+                runAfter: {},
+              },
+              Level_due: {
+                type: "Compose",
+                inputs: `@if(greaterOrEquals(outputs('Days_overdue'), ${ESCALATE.cfmAfterDays}), ${EXC.cfmLevel}, if(greaterOrEquals(outputs('Days_overdue'), ${ESCALATE.hodAfterDays}), ${EXC.hodLevel}, ${EXC.ownerLevel}))`,
+                runAfter: after("Days_overdue"),
+              },
+              Get_owner: getRow("systemusers", "@{items('For_each_overdue')?['_ownerid_value']}", "fullname,internalemailaddress", "Level_due"),
+              Remind_owner: teamsPost(
+                { kind: "chat", email: field("Get_owner", "internalemailaddress") },
+                "<p><b>Overdue exception</b> — @{items('For_each_overdue')?['stk_name']}</p>" +
+                  "<p>Due @{formatDateTime(items('For_each_overdue')?['stk_duedate'], 'dd MMM yyyy')}, now @{outputs('Days_overdue')} day(s) overdue. " +
+                  `It escalates to your head of department at ${ESCALATE.hodAfterDays} days and to the Country Finance Manager at ${ESCALATE.cfmAfterDays}.</p>` +
+                  `<p><a href="${APP_LINK.management}">Close it in the management app → Exceptions</a></p>`,
+                "Get_owner",
+              ),
+              Escalate_if_due: when(
+                "greater(outputs('Level_due'), items('For_each_overdue')?['stk_escalationlevel'])",
+                {
+                  Raise_level: updateRow(
+                    "stk_exceptions",
+                    "@{items('For_each_overdue')?['stk_exceptionid']}",
+                    { stk_escalationlevel: "@outputs('Level_due')", stk_status: EXC.escalated },
+                    null,
+                  ),
+                  Escalate_to: {
+                    type: "Compose",
+                    inputs: `@if(equals(outputs('Level_due'), ${EXC.hodLevel}), coalesce(outputs('Heads')?[items('For_each_overdue')?['stk_department@OData.Community.Display.V1.FormattedValue']], first(outputs('Get_CFM')?['body/value'])?['stk_value']), first(outputs('Get_CFM')?['body/value'])?['stk_value'])`,
+                    runAfter: after("Raise_level"),
+                  },
+                  Tell_escalation: teamsPost(
+                    { kind: "chat", email: "@{outputs('Escalate_to')}" },
+                    "<p><b>Exception escalated to you</b> — @{items('For_each_overdue')?['stk_name']}</p>" +
+                      `<p>@{items('For_each_overdue')?['stk_department@OData.Community.Display.V1.FormattedValue']} · owner ${field("Get_owner", "fullname")} · @{outputs('Days_overdue')} day(s) overdue.</p>` +
+                      `<p><a href="${APP_LINK.management}">Open Exceptions in the management app</a></p>`,
+                    "Escalate_to",
+                  ),
+                },
+                null,
+                "Remind_owner",
+              ),
+            },
+            runAfter: after("Get_overdue"),
+          },
+        },
+      ),
+    },
+    {
+      name: "IBKY F5 · Sign-off chain",
+      description: "On each sign-off row: announce it and the next gate; on a send-back say sign-off restarts; stop the preparer signing Finance; after Finance signs, email the pack and mark the stock take Completed.",
+      data: clientdata("When_a_gate_signs_or_sends_back", rowTrigger("stk_signoff", 1), {
+        Get_stock_take: getRow("stk_stocktakes", trig("_stk_stocktake_value"), "stk_name,stk_countdate,_stk_preparedby_value", null),
+        Get_signer: getRow("systemusers", trig("_stk_signedby_value"), "fullname,internalemailaddress", "Get_stock_take"),
+        Get_SoD: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'EnforceSeparationOfDuties'", top: 1 }, "Get_signer"),
+        Signed_or_sent_back: when(
+          `equals(triggerOutputs()?['body/stk_action'], ${SIGNOFF.sentBack})`,
+          {
+            Announce_send_back: teamsPost(
+              channel,
+              `<p><b>Sign-off sent back</b> — ${label("stk_gate")} (${field("Get_signer", "fullname")}) sent back ${field("Get_stock_take", "stk_name")}.</p>` +
+                `<p>Reason: ${trig("stk_comment")}</p><p>Sign-off starts again from Operations once it's fixed.</p>`,
+              null,
+            ),
+          },
+          {
+            Preparer_signed_Finance: when(
+              `and(equals(triggerOutputs()?['body/stk_gate'], ${SIGNOFF.finance}), equals(toLower(coalesce(first(outputs('Get_SoD')?['body/value'])?['stk_value'], 'false')), 'true'), equals(triggerOutputs()?['body/_stk_signedby_value'], outputs('Get_stock_take')?['body/_stk_preparedby_value']))`,
+              {
+                // Separation of duties: the person who prepared the reconciliation can't certify it.
+                Remove_signature: {
+                  type: "OpenApiConnection",
+                  inputs: {
+                    host: { connectionName: "shared_commondataserviceforapps", operationId: "DeleteRecord", apiId: apiId("shared_commondataserviceforapps") },
+                    parameters: { entityName: "stk_signoffs", recordId: trig("stk_signoffid") },
+                    authentication: auth,
+                  },
+                  runAfter: {},
+                },
+                Tell_the_signer: teamsPost(
+                  { kind: "chat", email: field("Get_signer", "internalemailaddress") },
+                  `<p><b>Your Finance sign-off on ${field("Get_stock_take", "stk_name")} was removed</b> — you prepared this reconciliation, so someone else in Finance must certify it.</p>`,
+                  "Remove_signature",
+                ),
+              },
+              {
+                Last_gate: when(
+                  `equals(triggerOutputs()?['body/stk_gate'], ${SIGNOFF.finance})`,
+                  {
+                    Get_distribution: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'SignOffDistribution'", top: 1 }, null),
+                    Get_signatures: listRows(
+                      "stk_signoffs",
+                      { select: "stk_gate,stk_action,stk_signedon,stk_comment,_stk_signedby_value", filter: "_stk_stocktake_value eq @{triggerOutputs()?['body/_stk_stocktake_value']}", orderBy: "stk_signedon asc" },
+                      "Get_distribution",
+                    ),
+                    Signature_rows: {
+                      type: "Select",
+                      inputs: {
+                        from: "@outputs('Get_signatures')?['body/value']",
+                        select: {
+                          Gate: "@item()?['stk_gate@OData.Community.Display.V1.FormattedValue']",
+                          Action: "@item()?['stk_action@OData.Community.Display.V1.FormattedValue']",
+                          By: "@item()?['_stk_signedby_value@OData.Community.Display.V1.FormattedValue']",
+                          On: "@formatDateTime(item()?['stk_signedon'], 'dd MMM yyyy HH:mm')",
+                          Comment: "@coalesce(item()?['stk_comment'], '')",
+                        },
+                      },
+                      runAfter: after("Get_signatures"),
+                    },
+                    Signature_table: { type: "Table", inputs: { from: "@body('Signature_rows')", format: "HTML" }, runAfter: after("Signature_rows") },
+                    Get_variances: listRows(
+                      "stk_variances",
+                      { select: "stk_name,stk_outturn,stk_grade,stk_expectedunits,stk_countedunits,stk_expectedkg,stk_countedkg,stk_cause,stk_state,_stk_site_value,_stk_stack_value", filter: "_stk_stocktake_value eq @{triggerOutputs()?['body/_stk_stocktake_value']}", orderBy: "stk_name asc" },
+                      "Signature_table",
+                    ),
+                    Variance_rows: {
+                      type: "Select",
+                      inputs: {
+                        from: "@outputs('Get_variances')?['body/value']",
+                        select: {
+                          Variance: "@item()?['stk_name']",
+                          Warehouse: "@item()?['_stk_site_value@OData.Community.Display.V1.FormattedValue']",
+                          Stack: "@item()?['_stk_stack_value@OData.Community.Display.V1.FormattedValue']",
+                          Outturn: "@item()?['stk_outturn']",
+                          Grade: "@item()?['stk_grade']",
+                          "XBS units": "@item()?['stk_expectedunits']",
+                          "Counted units": "@item()?['stk_countedunits']",
+                          "XBS kg": "@item()?['stk_expectedkg']",
+                          "Counted kg": "@item()?['stk_countedkg']",
+                          Cause: "@item()?['stk_cause@OData.Community.Display.V1.FormattedValue']",
+                          State: "@item()?['stk_state@OData.Community.Display.V1.FormattedValue']",
+                        },
+                      },
+                      runAfter: after("Get_variances"),
+                    },
+                    Variance_CSV: { type: "Table", inputs: { from: "@body('Variance_rows')", format: "CSV" }, runAfter: after("Variance_rows") },
+                    Get_open_exceptions: listRows("stk_exceptions", { select: "stk_name", filter: `stk_status ne ${EXC.closed}` }, "Variance_CSV"),
+                    Email_the_pack: {
+                      type: "OpenApiConnection",
+                      inputs: {
+                        host: { connectionName: "shared_office365", operationId: "SendEmailV2", apiId: apiId("shared_office365") },
+                        parameters: {
+                          "emailMessage/To": "@{first(outputs('Get_distribution')?['body/value'])?['stk_value']}",
+                          "emailMessage/Subject": `Stock take signed off: ${field("Get_stock_take", "stk_name")}`,
+                          "emailMessage/Body":
+                            `<p><b>${field("Get_stock_take", "stk_name")}</b> (count date ${field("Get_stock_take", "stk_countdate")}) has been signed off by all four gates and is now <b>Completed</b>.</p>` +
+                            "<p>@{length(outputs('Get_variances')?['body/value'])} variances (attached as CSV) · @{length(outputs('Get_open_exceptions')?['body/value'])} exceptions still open.</p>" +
+                            "<h3>Sign-off</h3>@{body('Signature_table')}" +
+                            `<p><a href="${APP_LINK.management}">Open the management app</a> for the full reconciliation.</p>`,
+                          "emailMessage/Attachments": [{ Name: `Variances - ${field("Get_stock_take", "stk_name")}.csv`, ContentBytes: "@{base64(body('Variance_CSV'))}" }],
+                          "emailMessage/Importance": "Normal",
+                        },
+                        authentication: auth,
+                      },
+                      runAfter: after("Get_open_exceptions"),
+                    },
+                    Mark_completed: updateRow(
+                      "stk_stocktakes",
+                      trig("_stk_stocktake_value"),
+                      { stk_status: STOCKTAKE.completed, stk_closedon: "@utcNow()", stk_closecomment: "Signed off by Operations, Warehouse, Trading and Finance." },
+                      "Email_the_pack",
+                    ),
+                    Announce_completed: teamsPost(
+                      channel,
+                      `<p><b>Stock take signed off</b> — ${field("Get_stock_take", "stk_name")} is Completed. Finance (${field("Get_signer", "fullname")}) certified it; the pack was emailed to the distribution list.</p>`,
+                      "Mark_completed",
+                    ),
+                  },
+                  {
+                    Announce_next_gate: teamsPost(
+                      channel,
+                      `<p><b>${label("stk_gate")} signed</b> ${field("Get_stock_take", "stk_name")} — ${field("Get_signer", "fullname")}${"@{if(empty(triggerOutputs()?['body/stk_comment']), '', concat(': ', triggerOutputs()?['body/stk_comment']))}"}</p>` +
+                        `<p>Next: <b>@{json('${JSON.stringify(NEXT_GATE)}')?[string(triggerOutputs()?['body/stk_gate'])]}</b></p>` +
+                        `<p><a href="${APP_LINK.management}">Open Sign-off in the management app</a></p>`,
+                      null,
+                    ),
+                  },
+                  null,
+                ),
+              },
+              null,
+            ),
+          },
+          "Get_SoD",
         ),
       }),
     },

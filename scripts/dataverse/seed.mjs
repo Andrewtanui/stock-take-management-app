@@ -42,6 +42,9 @@ const SETTINGS = [
   ["AvgValueUsdPerTonne", "7383", "Average coffee value for value-at-risk (Kenya Variables sheet)"],
   ["EnforceSeparationOfDuties", "false", "true = a mapping change can't be approved by the person who requested it. Off in the dev environment (one user); turn on for go-live."],
   ["MappingApprovers", "andrew.tanui@pathwaystechnologies.com", "Who approves basket/outturn mapping changes (flow F6). Emails separated by ;. Set to the Finance approvers for go-live."],
+  ["SignOffDistribution", "andrew.tanui@pathwaystechnologies.com", "Who gets the sign-off pack email when Finance certifies a stock take (flow F5). Emails separated by ;."],
+  ["HeadsOfDepartment", "{\"Operations\": \"andrew.tanui@pathwaystechnologies.com\", \"Warehouse\": \"andrew.tanui@pathwaystechnologies.com\", \"Trading\": \"andrew.tanui@pathwaystechnologies.com\", \"Finance\": \"andrew.tanui@pathwaystechnologies.com\", \"Logistics\": \"andrew.tanui@pathwaystechnologies.com\", \"Quality\": \"andrew.tanui@pathwaystechnologies.com\", \"IT\": \"andrew.tanui@pathwaystechnologies.com\"}", "Department → head of department email, as JSON. Exceptions 3+ days overdue escalate here (flow F4)."],
+  ["CountryFinanceManager", "andrew.tanui@pathwaystechnologies.com", "Exceptions 7+ days overdue escalate to this email (flow F4)."],
 ];
 const IMPORT = {
   name: "IMP-260302-0852",

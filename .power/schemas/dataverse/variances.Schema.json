@@ -404,6 +404,14 @@
           "x-ms-schema-name": "stk_grade",
           "maxLength": 100
         },
+        "stk_lotkey": {
+          "type": "string",
+          "title": "Lot key",
+          "x-ms-dataverse-attribute": "stk_lotkey",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_lotkey",
+          "maxLength": 300
+        },
         "stk_name": {
           "type": "string",
           "title": "Reference",

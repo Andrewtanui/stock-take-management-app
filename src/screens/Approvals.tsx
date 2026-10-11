@@ -117,7 +117,14 @@ export default function Approvals() {
               <>
                 <label className="field">
                   <span className="field-label">Comment (required to send back)</span>
-                  <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="e.g. Recount the lots behind the pillar"
+                  />
+                  <span className="muted small">The counter sees this. Don't include XBS figures — counting is blind.</span>
                 </label>
                 <div className="btn-row">
                   <button

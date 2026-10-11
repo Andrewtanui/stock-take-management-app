@@ -2,15 +2,21 @@
 // KEEP IDENTICAL in both repos (src/shared/count-rules.ts) — `npm run check:shared`
 // fails if they drift. Pure functions only: no app imports, no data access.
 //
-//   units  = full bags + pocket bags            (bag objects on the stack)
+//   units  = full bags + 1 if there's a pocket  (bag objects on the stack)
 //   weight = full bags × pack kg + pocket kg
+//
+// An outturn has at most ONE pocket at a location: the odd last bag. It can't
+// be re-bagged, so it can weigh anything above 0 kg (66 kg pockets are real).
+// A split lot has its own pocket at each location.
 //   60 kg bag equivalents = weight ÷ 60          (what Finance compares)
 
 export interface Qty {
   /** Packing type code, e.g. JUTE60. */
   pack: string;
   bags: number;
+  /** 0 or 1 — derived from pocketKg (see withPocket). Kept for the stored count line. */
   pocketBags: number;
+  /** Weight of the pocket; 0 = no pocket. */
   pocketKg: number;
 }
 
@@ -24,7 +30,10 @@ export interface PackRule {
 /** Weight difference below which a count still "matches" XBS. */
 export const MATCH_TOLERANCE_KG = 0.05;
 
-export const unitsOf = (q: Qty) => q.bags + q.pocketBags;
+export const hasPocket = (q: Qty) => q.pocketKg > 0;
+export const unitsOf = (q: Qty) => q.bags + (hasPocket(q) ? 1 : 0);
+/** Sets the pocket weight; a weight means exactly one pocket. */
+export const withPocket = <T extends Qty>(q: T, kg: number): T => ({ ...q, pocketKg: Math.max(0, kg), pocketBags: kg > 0 ? 1 : 0 });
 export const kgOf = (q: Qty, kgPerBag: number) => q.bags * kgPerBag + q.pocketKg;
 export const bags60 = (kg: number) => kg / 60;
 
@@ -34,12 +43,10 @@ export function defaultPackCode(grade: string, packs: PackRule[]): string {
   return (hit ?? packs.find((p) => !p.gradePattern) ?? packs[0]).code;
 }
 
-/** A pocket is a part-filled bag, so each must weigh less than a full one. */
-export function pocketProblem(q: Qty, kgPerBag: number): string | null {
-  if (q.pocketKg > 0 && q.pocketBags === 0) return "You entered pocket weight but no pocket bags. Add the number of pocket bags.";
-  if (q.pocketBags > 0 && q.pocketKg === 0) return "Pocket bags need a weight. Weigh them and enter the total kg.";
-  if (q.pocketBags > 0 && q.pocketKg >= q.pocketBags * kgPerBag)
-    return `Pockets must weigh less than ${kgPerBag} kg each. If a pocket is full, count it as a full bag.`;
+/** One pocket per outturn at a location, with a weight above 0 kg. */
+export function pocketProblem(q: Qty): string | null {
+  if (q.pocketBags > 1) return "An outturn has only one pocket at a location. Enter that one pocket's weight.";
+  if (q.pocketKg < 0) return "Pocket weight can't be negative.";
   return null;
 }
 
