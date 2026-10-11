@@ -5,6 +5,13 @@
  */
 
 export const dataSourcesInfo = {
+  "annotations": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "annotationid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "audits": {
     "tableId": "",
     "version": "",

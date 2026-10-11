@@ -162,7 +162,8 @@ for (const t of TABLES) {
           OwnershipType: t.own === "user" ? "UserOwned" : "OrganizationOwned",
           IsActivity: false,
           HasActivities: false,
-          HasNotes: false,
+          // Notes hold photos (annotations); once on, Dataverse never turns them off.
+          HasNotes: !!t.notes,
           IsAuditEnabled: audit,
           Attributes: [
             {
@@ -178,6 +179,20 @@ for (const t of TABLES) {
         },
         { solution: SOL },
       ),
+  );
+}
+
+/* 3b. notes (attachments) on tables created before notes were wanted */
+for (const t of TABLES.filter((x) => x.notes)) {
+  await step(
+    `notes on ${t.name}`,
+    async () => (await dv("GET", `EntityDefinitions(LogicalName='${t.name}')?$select=HasNotes`)).HasNotes === true,
+    async () => {
+      const e = await dv("GET", `EntityDefinitions(LogicalName='${t.name}')`);
+      delete e["@odata.context"];
+      e.HasNotes = true;
+      await dv("PUT", `EntityDefinitions(LogicalName='${t.name}')`, e, { solution: SOL });
+    },
   );
 }
 

@@ -11,7 +11,8 @@ import { SOLUTION, TABLES } from "./schema.mjs";
 
 const DRY = process.argv.includes("--dry-run");
 const SOL = SOLUTION.uniquename;
-const OWN = Object.fromEntries(TABLES.map((t) => [t.name, t.own]));
+// stk_ tables plus the platform tables the roles touch (Note = annotation, for photos).
+const OWN = { ...Object.fromEntries(TABLES.map((t) => [t.name, t.own])), Note: "user" };
 const LETTER = { C: "Create", R: "Read", W: "Write", D: "Delete", A: "Assign", S: "Share", P: "Append" };
 const DEPTH = { G: "Global", B: "Basic" };
 
@@ -40,7 +41,7 @@ function expand(role) {
 }
 
 /* ---------- docs/security-roles.md (always regenerated) ---------- */
-const tables = TABLES.map((t) => t.name);
+const tables = [...TABLES.map((t) => t.name), "Note"];
 const cell = (role, t) => {
   const s = role.tables[t];
   if (!s) return "";

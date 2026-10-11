@@ -386,16 +386,3 @@ export let GRADES: string[] = [];
 export let PACK_TYPES: { id: string; label: string; kg: number; grades: string }[] = [];
 export let STOCK_TAKE_GROUPS: { name: string; site: string; locations: string; counters: number }[] = [];
 
-export const REPORTS = [
-  { name: "Physical count by warehouse", what: "Bags and kg counted, per warehouse" },
-  { name: "Physical count by grade", what: "Bags and kg counted, per grade" },
-  { name: "System count by warehouse", what: "XBS expected stock, per warehouse" },
-  { name: "Variance by warehouse", what: "Physical − XBS, bags and %, per warehouse" },
-  { name: "Variance by grade", what: "Physical − XBS, bags and %, per grade" },
-  { name: "Location summary", what: "Stock by stack location" },
-  { name: "Warehouse summary", what: "Stock by warehouse and stock type" },
-  { name: "Historical imports", what: "Every XBS upload with its checks" },
-  { name: "Exception analytics", what: "Exceptions by root cause, owner and age" },
-  { name: "Complaints log", what: "Problems raised by counters and how they were resolved" },
-  { name: "Sign-off pack", what: "Reconciliation, variances and signatures as PDF or Excel" },
-];

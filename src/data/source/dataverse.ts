@@ -33,6 +33,7 @@ import { Stk_packtypesService } from "../../generated/services/Stk_packtypesServ
 import { Stk_recountsService } from "../../generated/services/Stk_recountsService";
 import { Stk_settingsService } from "../../generated/services/Stk_settingsService";
 import { Stk_signoffsService } from "../../generated/services/Stk_signoffsService";
+import { AnnotationsService } from "../../generated/services/AnnotationsService";
 import { Stk_sitesService } from "../../generated/services/Stk_sitesService";
 import { Stk_stacksService } from "../../generated/services/Stk_stacksService";
 import { Stk_stocktakesService } from "../../generated/services/Stk_stocktakesService";
@@ -46,6 +47,7 @@ import { Stk_issuesstk_category, Stk_issuesstk_linkedcause, Stk_issuesstk_status
 import { Stk_stocktakesstk_status, Stk_stocktakesstk_type } from "../../generated/models/Stk_stocktakesModel";
 import { Stk_xbsimportsstk_status } from "../../generated/models/Stk_xbsimportsModel";
 import { Stk_stacksstk_status } from "../../generated/models/Stk_stacksModel";
+import { Stk_countlinesstk_category, Stk_countlinesstk_reason } from "../../generated/models/Stk_countlinesModel";
 import { Stk_basketmapsstk_primarybasket } from "../../generated/models/Stk_basketmapsModel";
 import { Stk_signoffsstk_action, Stk_signoffsstk_gate } from "../../generated/models/Stk_signoffsModel";
 import { Stk_mappingchangesstk_state, Stk_mappingchangesstk_target } from "../../generated/models/Stk_mappingchangesModel";
@@ -63,10 +65,12 @@ import type {
   AuditEntry,
   BasketMap,
   Counter,
+  CountRow,
   CountSheet,
   Dept,
   DirectPurchase,
   Exception,
+  StackInfo,
   ImportStatus,
   Role,
   MappingChange,
@@ -198,12 +202,36 @@ async function names(ids: (string | undefined)[]) {
 const SHEET_STATUS: Record<string, SheetStatus> = { "In progress": "In progress", Submitted: "Submitted", Approved: "Approved", "Sent back": "Rejected" };
 const IMPORT_STATUS: Record<string, ImportStatus> = { Validating: "Validated", Imported: "Imported", Failed: "Failed", Superseded: "Superseded" };
 
+/**
+ * The signed-in user's Dataverse id. The Power Apps web player passes it
+ * directly; the mobile player may pass only the Entra object id or the
+ * sign-in name, so look the user up by those.
+ */
+async function signedInUser(): Promise<{ id: string; fullName?: string }> {
+  const { user } = await getContext();
+  if (user.systemUserId) return { id: user.systemUserId, fullName: user.fullName };
+  const esc = (v: string) => `'${v.replace(/'/g, "''")}'`;
+  const tries = [
+    user.objectId && `azureactivedirectoryobjectid eq ${user.objectId}`,
+    user.userPrincipalName && `domainname eq ${esc(user.userPrincipalName)}`,
+    user.userPrincipalName && `internalemailaddress eq ${esc(user.userPrincipalName)}`,
+  ].filter(Boolean) as string[];
+  for (const filter of tries) {
+    const r = await SystemusersService.getAll({ select: ["systemuserid", "fullname"], filter: `${filter} and isdisabled eq false`, top: 1 });
+    const u = r.success ? r.data?.[0] : undefined;
+    if (u) return { id: u.systemuserid, fullName: u.fullname ?? user.fullName };
+  }
+  throw new Error(
+    user.userPrincipalName || user.objectId
+      ? `${user.userPrincipalName ?? "Your account"} isn't a user in this Dataverse environment yet. Ask IT to add you and give you a stock take role.`
+      : "Power Apps didn't say who's signed in. Open the app from Power Apps (Local Play or the published app).",
+  );
+}
+
 /* ---------- load ---------- */
 
 async function load(): Promise<MgmtData> {
-  const ctx = await getContext();
-  ids.me = ctx.user.systemUserId ?? "";
-  if (!ctx.user.systemUserId) throw new Error("Power Apps didn't say who's signed in. Open the app from Power Apps (Local Play or the published app).");
+  ids.me = (await signedInUser()).id;
 
   const [stockTakeRows, siteRows, packRows, settingRows, importRows] = await Promise.all([
     all((o) => Stk_stocktakesService.getAll(o), { select: ["stk_stocktakeid", "stk_name", "stk_type", "stk_status", "stk_countdate", "_stk_import_value", "_createdby_value", "_stk_preparedby_value"] as never, orderBy: ["stk_countdate desc"] }, "read stock takes"),
@@ -288,7 +316,8 @@ async function load(): Promise<MgmtData> {
             select: [
               "stk_countlineid", "stk_outturn", "stk_batch", "stk_grade", "_stk_stack_value", "_stk_site_value", "stk_bags", "stk_pocketbags", "stk_units", "stk_kg",
               "stk_reason", "stk_isfound", "stk_isother", "stk_countedon", "_createdby_value", "_stk_countsheet_value",
-            ],
+              "stk_pocketkg", "stk_category", "_stk_recount_value",
+            ] as never,
             filter: orFilter("_stk_countsheet_value", sheetIds),
           },
           "read counts",
@@ -365,6 +394,14 @@ async function load(): Promise<MgmtData> {
     ),
   ]);
   const lineOf = new Map(countRows.map((c) => [c.stk_countlineid, c]));
+  /* photos: which count lines and problem reports carry one (ids only; bytes on demand) */
+  const photoRows = await all(
+    (o) => AnnotationsService.getAll(o),
+    { select: ["annotationid", "_objectid_value"], filter: "isdocument eq true and (subject eq 'Photo of the tag' or subject eq 'Photo of the problem')" },
+    "read photos",
+  );
+  const photoOf = new Map(photoRows.map((p) => [p._objectid_value, p.annotationid]));
+
   const variances: Variance[] = varianceRows.map((v) => {
     const line = lineOf.get(v._stk_countline_value!);
     const where = stackOf.get(v._stk_stack_value!);
@@ -381,6 +418,7 @@ async function load(): Promise<MgmtData> {
     const state = label(Stk_variancesstk_state, v.stk_state) ?? "Open";
     return {
       id: v.stk_name,
+      photo: photoOf.get(v._stk_countline_value),
       site,
       zone: thirdParty.has(site) ? `${sites.find((x) => x.code === site)?.short} · ${where?.name ?? ""}` : (where?.name ?? ""),
       outturn: v.stk_outturn ?? "",
@@ -546,6 +584,7 @@ async function load(): Promise<MgmtData> {
     owner: r._stk_assignedto_value ? nm(r._stk_assignedto_value) : undefined,
     resolution: r.stk_resolution ?? undefined,
     linkedCause: label(Stk_issuesstk_linkedcause, r.stk_linkedcause) as RootCause | undefined,
+    photo: photoOf.get(r.stk_issueid),
   }));
 
   /* mapping: baskets, change requests */
@@ -627,7 +666,40 @@ async function load(): Promise<MgmtData> {
     signOffTarget: setting("SignOffWorkingDays", 7),
   };
 
+  /* reports and approvals: the raw count lines and stack statuses */
+  const sheetName = new Map(activeSheets.map((r) => [r.stk_countsheetid, r.stk_name]));
+  const counts: CountRow[] = countRows.map((c) => {
+    const x = c as typeof c & { stk_pocketkg?: number; stk_category?: number; _stk_recount_value?: string };
+    return {
+      site: siteCode.get(c._stk_site_value!)!,
+      stack: stackOf.get(c._stk_stack_value!)?.name ?? "",
+      batch: c.stk_batch ?? "",
+      outturn: c.stk_outturn ?? "",
+      grade: c.stk_grade ?? "",
+      bags: c.stk_bags ?? 0,
+      pocketKg: Number(x.stk_pocketkg ?? 0),
+      units: c.stk_units ?? (c.stk_bags ?? 0) + (c.stk_pocketbags ?? 0),
+      kg: Number(c.stk_kg ?? 0),
+      by: nm(c._createdby_value),
+      countedOn: c.stk_countedon ?? undefined,
+      found: !!c.stk_isfound,
+      other: !!c.stk_isother,
+      category: label(Stk_countlinesstk_category, x.stk_category),
+      reason: label(Stk_countlinesstk_reason, c.stk_reason),
+      recount: !!x._stk_recount_value,
+      sheet: sheetName.get(c._stk_countsheet_value ?? ""),
+      photo: photoOf.get(c.stk_countlineid),
+    };
+  });
+  const stacks: StackInfo[] = stackRows.map((r) => ({
+    site: siteCode.get(r._stk_site_value!)!,
+    name: r.stk_name,
+    status: label(Stk_stacksstk_status, r.stk_status) ?? "In progress",
+  }));
+
   return {
+    counts,
+    stacks,
     reference: {
       today,
       lines,
@@ -1031,6 +1103,12 @@ async function addDirectPurchase(d: DirectPurchase) {
   );
 }
 
+async function photo(id: string) {
+  const r = unwrap(await AnnotationsService.get(id, { select: ["documentbody", "mimetype"] }), "open the photo");
+  if (!r.documentbody) throw new Error("This photo has no picture data.");
+  return { mime: r.mimetype ?? "image/jpeg", base64: r.documentbody };
+}
+
 async function updateIssue(name: string, patch: Partial<Issue>) {
   const id = ids.issue.get(name);
   if (!id) throw new Error(`Problem report ${name} not found`);
@@ -1227,6 +1305,7 @@ export const dataverseSource: DataSource = {
   decideMapping,
   setManualEntry,
   updateIssue,
+  photo,
   addDirectPurchase,
   addSignoff,
 };

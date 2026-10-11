@@ -282,7 +282,7 @@ export const TABLES = [
     ],
   },
   {
-    name: "stk_countline", display: "Count line", plural: "Count lines", own: "user", primary: ["Name", 60],
+    name: "stk_countline", display: "Count line", plural: "Count lines", own: "user", primary: ["Name", 60], notes: true, // photo of the tag
     cols: [
       ["stk_clientid", "Client ID", s(40)],
       ["stk_outturn", "Outturn", s(30)],
@@ -362,7 +362,7 @@ export const TABLES = [
     keys: [["stk_name"]],
   },
   {
-    name: "stk_issue", display: "Problem report", plural: "Problem reports", own: "user", primary: ["Reference", 30],
+    name: "stk_issue", display: "Problem report", plural: "Problem reports", own: "user", primary: ["Reference", 30], notes: true, // photo from the counter
     cols: [
       ["stk_category", "Category", choice("stk_issuecategory")],
       ["stk_screen", "Screen", s(60)],

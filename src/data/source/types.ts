@@ -6,10 +6,12 @@ import type {
   AuditEntry,
   BasketMap,
   Counter,
+  CountRow,
   CountSheet,
   DirectPurchase,
   Exception,
   Issue,
+  StackInfo,
   MappingChange,
   Role,
   RootCause,
@@ -60,6 +62,9 @@ export interface MgmtData {
   baskets?: BasketMap[];
   /** Sign-off so far on the active stock take. */
   signatures?: Partial<Record<Role, Signature>>;
+  /** Physical count lines and stacks of the active stock take (reports). */
+  counts?: CountRow[];
+  stacks?: StackInfo[];
   stockTakes: StockTake[];
   sheets: CountSheet[];
   variances: Variance[];
@@ -104,4 +109,6 @@ export interface DataSource {
   updateIssue(id: string, patch: Partial<Issue>): Promise<void>;
   addDirectPurchase(d: DirectPurchase): Promise<void>;
   addSignoff(gate: Role, action: "signed" | "sent back", comment: string): Promise<void>;
+  /** A photo's bytes, fetched only when someone opens it. */
+  photo(id: string): Promise<{ mime: string; base64: string }>;
 }

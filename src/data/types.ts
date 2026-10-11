@@ -79,6 +79,40 @@ export interface ImportCheck {
 }
 
 export type SheetStatus = "In progress" | "Submitted" | "Approved" | "Rejected";
+/** One physical count line, as the reports read it. */
+export interface CountRow {
+  site: SiteCode;
+  stack: string;
+  batch: string;
+  outturn: string;
+  grade: string;
+  bags: number;
+  /** 0 = no pocket; a pocket counts as one unit. */
+  pocketKg: number;
+  units: number;
+  kg: number;
+  by: string;
+  /** ISO time the line was counted. */
+  countedOn?: string;
+  found: boolean;
+  other: boolean;
+  category?: string;
+  reason?: string;
+  /** A blind recount line; it replaces earlier lines for the same lot. */
+  recount: boolean;
+  /** Count sheet the line belongs to (its name). */
+  sheet?: string;
+  /** Dataverse Note id of the photo of the tag, if one was taken. */
+  photo?: string;
+}
+
+/** A stack on the active stock take and where it is in the approval flow. */
+export interface StackInfo {
+  site: SiteCode;
+  name: string;
+  status: string;
+}
+
 export interface CountSheet {
   id: string;
   counter: string;
@@ -107,6 +141,8 @@ export type RootCause =
 
 export interface Variance {
   id: string;
+  /** Dataverse Note id of the counter's photo of the tag, if one was taken. */
+  photo?: string;
   site: SiteCode;
   zone: string;
   outturn: string;
@@ -204,6 +240,8 @@ export interface Issue {
   owner?: string;
   resolution?: string;
   linkedCause?: RootCause;
+  /** Dataverse Note id of the counter's photo, if one was sent. */
+  photo?: string;
 }
 
 export interface AuditEntry {

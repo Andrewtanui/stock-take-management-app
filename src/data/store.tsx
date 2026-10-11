@@ -57,6 +57,9 @@ function useStoreState(source: DataSource, data: MgmtData) {
   const [audit, setAudit] = useState<AuditEntry[]>(data.audit);
   const [issues, setIssues] = useState<Issue[]>(data.issues);
   const [directPurchases, setDirectPurchases] = useState<DirectPurchase[]>(data.reference.directPurchases);
+  // Count lines and stacks are read-only here; they change in the counter app.
+  const counts = data.counts ?? [];
+  const stacks = data.stacks ?? [];
   const [signatures, setSignatures] = useState<Partial<Record<Role, Signature>>>(data.signatures ?? {});
 
   const me = PEOPLE[role];
@@ -94,10 +97,14 @@ function useStoreState(source: DataSource, data: MgmtData) {
     audit,
     issues,
     signatures,
+    counts,
+    stacks,
     directPurchases,
     people: data.reference.people,
     source: source.kind,
     flash,
+    /** A counter's photo (Dataverse Note), loaded when someone opens it. */
+    photo: (id: string) => source.photo(id),
 
     setRole(r: Role) {
       setRoleState(r);

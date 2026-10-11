@@ -1,14 +1,20 @@
-// The official NKG East Africa logo (negative version, public/brand/nkg-mark.svg)
-// on the Neumann green header, followed by the app name. The brand book allows
-// the negative logo on dark surfaces; the file is used unmodified.
+// NKG sub-brand logo lockup ("company name with two lines, version 2"):
+// figurative mark | red line | company name in Lucida Bright, with a small
+// second line. The official mark is not redrawn here: download it from the
+// Comms N'Sider page (nkg2017.sharepoint.com/sites/Communications), save it as
+// public/brand/nkg-mark.svg and set HAS_MARK to true.
 
-export function Logo({ sub }: { sub: string }) {
+const HAS_MARK = true;
+
+export function Logo({ sub, negative }: { sub: string; negative?: boolean }) {
   return (
-    <span className="logo">
-      <span className="logo-crop">
-        <img src="./brand/nkg-mark.svg" alt="NKG East Africa" />
+    <span className={"logo" + (negative ? " logo-negative" : "")} aria-label={`Ibero Kenya ${sub}`}>
+      {HAS_MARK && <img className="logo-mark" src="./brand/nkg-mark.svg" alt="" />}
+      <span className="logo-rule" aria-hidden />
+      <span className="logo-text">
+        <span className="logo-name">Ibero Kenya</span>
+        <span className="logo-sub">{sub}</span>
       </span>
-      <span className="logo-app">{sub}</span>
     </span>
   );
 }

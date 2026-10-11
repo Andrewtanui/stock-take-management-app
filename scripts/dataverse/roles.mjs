@@ -32,6 +32,7 @@ const READ_ALL_MGMT = {
   stk_signoff: "R",
   stk_directpurchase: "R",
   stk_issue: "R",
+  Note: "R", // photos on count lines and problem reports
 };
 
 export const ROLES = [
@@ -46,6 +47,7 @@ export const ROLES = [
       stk_countline: { G: "R", B: "CW" }, // sees teammates' lines for duplicate warnings
       stk_recount: { B: "RW" },
       stk_issue: { B: "CRW" },
+      Note: { B: "CRW" }, // photo of the tag / of the problem, attached to their own lines
     },
   },
   {

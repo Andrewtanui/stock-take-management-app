@@ -3,6 +3,7 @@ import { site } from "../data/repository";
 import { useStore } from "../data/store";
 import type { Issue, RootCause } from "../data/types";
 import { Chip, PageHead, Tabs, type Tone } from "../ui/kit";
+import { PhotoButton } from "../ui/PhotoButton";
 
 const TONE: Record<Issue["status"], Tone> = { Open: "warn", "In progress": "info", Resolved: "ok" };
 const CAUSES: (RootCause | "")[] = ["", "Split lot", "Unposted receipt", "Duplicate entry", "Mapping error", "Pocket / unit difference", "In transit", "Not yet known"];
@@ -59,6 +60,7 @@ export default function Issues() {
               <Chip tone={TONE[it.status]}>{it.status}</Chip>
             </div>
             <p>{it.text}</p>
+            {it.photo && <PhotoButton id={it.photo} title={`${it.id} · ${it.category}`} />}
             <p className="muted small">
               {it.by} · {site(it.site).name} · screen: {it.screen} · {it.at}
             </p>

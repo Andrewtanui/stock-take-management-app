@@ -4,6 +4,7 @@ import { can, site } from "../data/repository";
 import { useStore } from "../data/store";
 import type { SheetStatus } from "../data/types";
 import { Chip, PageHead, ReadOnly, Tabs, n, type Tone } from "../ui/kit";
+import { PhotoButton } from "../ui/PhotoButton";
 
 const TONE: Record<SheetStatus, Tone> = { "In progress": "info", Submitted: "warn", Approved: "ok", Rejected: "crit" };
 const LABEL: Record<SheetStatus, string> = { "In progress": "In progress", Submitted: "Waiting", Approved: "Approved", Rejected: "Sent back" };
@@ -103,6 +104,7 @@ export default function Approvals() {
               </p>
             )}
             {s.variances > 0 && <p className="hint">Variances on this sheet are in Variances, each with a suggested cause.</p>}
+            <SheetLines sheet={s.id} />
             {s.status === "Rejected" && (
               <div className="callout callout-warn">
                 <div>
@@ -153,5 +155,51 @@ export default function Approvals() {
         )}
       </div>
     </div>
+  );
+}
+
+/** The lines on a sheet, with the counter's photo of the tag where one was taken. */
+function SheetLines({ sheet }: { sheet: string }) {
+  const store = useStore();
+  const lines = store.counts
+    .filter((c) => c.sheet === sheet)
+    .sort((a, b) => a.stack.localeCompare(b.stack) || a.outturn.localeCompare(b.outturn));
+  if (!lines.length) return null;
+  const photos = lines.filter((l) => l.photo).length;
+  return (
+    <section className="sheet-lines">
+      <h3 className="field-label">
+        Lines on this sheet · {lines.length}
+        {photos ? ` · ${photos} with a photo` : ""}
+      </h3>
+      <div className="table-wrap scroll-y">
+        <table className="table table-tight">
+          <thead>
+            <tr>
+              <th>Stack</th>
+              <th>Outturn</th>
+              <th>Grade</th>
+              <th className="num">Units</th>
+              <th className="num">Kg</th>
+              <th>Unusual</th>
+              <th>Photo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={i}>
+                <td className="code">{l.stack}</td>
+                <td className="code">{l.other ? l.category ?? "Other stock" : l.outturn}</td>
+                <td>{l.grade}</td>
+                <td className="num">{n(l.units)}</td>
+                <td className="num">{n(l.kg, 1)}</td>
+                <td className="muted">{l.reason ?? (l.found ? "Found here" : "")}</td>
+                <td>{l.photo ? <PhotoButton id={l.photo} title={`${l.outturn || l.category} at ${l.stack}`} /> : <span className="muted">—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

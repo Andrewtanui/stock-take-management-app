@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, Camera, Sparkles } from "lucide-react";
+import { ArrowLeft, Sparkles } from "lucide-react";
 import { allLines, can, site } from "../data/repository";
 import { useStore } from "../data/store";
 import type { RootCause, Variance } from "../data/types";
 import { Chip, Code, Diff, PageHead, ReadOnly, Tabs, n, signed, type Tone } from "../ui/kit";
+import { PhotoButton } from "../ui/PhotoButton";
 
 const CAUSES: RootCause[] = [
   "Split lot",
@@ -185,7 +186,7 @@ function Detail({ v, allowed, onBack }: { v: Variance; allowed: boolean; onBack:
                 <td>Count</td>
                 <td>{v.zone}</td>
                 <td className="muted">
-                  {v.counter}, {v.at} <Camera size={14} aria-label="Photo attached" />
+                  {v.counter}, {v.at} {v.photo && <PhotoButton id={v.photo} title={`${v.outturn} at ${v.zone}`} />}
                 </td>
                 <td className="num">{v.counted}</td>
               </tr>

@@ -35,5 +35,6 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 | `stk_signoff` |  | CR | CR | CR | CR | R |  |
 | `stk_directpurchase` |  | R | R | CRW | R | R |  |
 | `stk_issue` | CRW (own) | RWA | R | R | R | RWA |  |
+| `Note` | CRW (own) | R | R | R | R | R |  |
 
 🔒 Locked: no role has Write or Delete. System Administrators bypass roles, so the apps also refuse edits to these tables.

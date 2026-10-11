@@ -6,6 +6,7 @@ import raw from "../xbs-2026-03-02.json";
 import type {
   AuditEntry,
   Counter,
+  CountRow,
   CountSheet,
   DirectPurchase,
   Exception,
@@ -13,6 +14,7 @@ import type {
   MappingChange,
   Site,
   SiteCode,
+  StackInfo,
   StockTake,
   UserRow,
   Variance,
@@ -273,6 +275,47 @@ const STOCK_TAKE_GROUPS = [
 
 const COUNTED: Partial<Record<SiteCode, number>> = { IBR: 40460, AGL: 15960, KPCU: 2280, MAXA: 1307, MCF: 187, KCCE: 38 };
 
+/**
+ * Demo counts for the reports: Ibero rows A-D and the whole of AGL counted
+ * as XBS holds them, except the scripted differences in PHYS_DELTA.
+ */
+function demoCounts(): { counts: CountRow[]; stacks: StackInfo[] } {
+  const names = ["Peter M.", "Mary W.", "Joseph O.", "Samuel K."];
+  const lots = new Map<string, CountRow>();
+  const applied = new Set<string>();
+  for (const l of lines) {
+    const ibero = l.wh === "IBR" && !!l.z && "ABCD".includes(l.z[0]) && l.z !== "TEMP-0-0";
+    const agl = l.wh === "AGL" && l.t === "W";
+    if (!ibero && !agl) continue;
+    const stack = ibero ? l.z! : "Site 1 · Stack 1";
+    const k = `${l.wh}|${stack}|${l.b}`;
+    const row = lots.get(k) ?? {
+      site: l.wh, stack, batch: l.b, outturn: l.o, grade: l.i, bags: 0, pocketKg: 0, units: 0, kg: 0,
+      by: names[lots.size % names.length], countedOn: "2026-03-02T08:30:00Z", found: false, other: false, recount: false,
+    };
+    row.bags += l.bg;
+    row.pocketKg = Math.max(row.pocketKg, l.pk);
+    row.units += l.u;
+    row.kg += l.kg;
+    lots.set(k, row);
+  }
+  for (const row of lots.values()) {
+    const d = PHYS_DELTA[row.outturn];
+    if (d && !applied.has(row.outturn)) {
+      applied.add(row.outturn);
+      row.bags = Math.max(0, row.bags + d);
+      row.units = Math.max(0, row.units + d);
+      row.kg = Math.max(0, row.kg + d * 60);
+    }
+  }
+  const counts = [...lots.values()];
+  const stacks: StackInfo[] = [...new Set(counts.map((c) => `${c.site}|${c.stack}`))].map((k) => {
+    const [site, name] = k.split("|") as [SiteCode, string];
+    return { site, name, status: site === "IBR" && name[0] === "D" ? "Submitted" : "Approved" };
+  });
+  return { counts, stacks };
+}
+
 const ok = () => Promise.resolve();
 let importN = 0;
 
@@ -280,6 +323,7 @@ export const mockSource: DataSource = {
   kind: "mock",
   async load(): Promise<MgmtData> {
     return {
+      ...demoCounts(),
       reference: {
         today: TODAY,
         lines,
@@ -322,4 +366,5 @@ export const mockSource: DataSource = {
   updateIssue: ok,
   addDirectPurchase: ok,
   addSignoff: ok,
+  photo: () => Promise.reject(new Error("Photos are only stored in Dataverse.")),
 };

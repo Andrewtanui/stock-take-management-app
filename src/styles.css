@@ -331,6 +331,9 @@ textarea.input { resize: vertical; }
 /* ---------- dialog ---------- */
 .dialog-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--brand-black) 40%, transparent); animation: fade 0.15s; }
 .dialog { width: min(620px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 22px 24px 24px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-2); animation: pop 0.18s ease-out; }
+.dialog-wide { width: min(1180px, 100%); }
+.report-table { display: flex; flex-direction: column; gap: 8px; }
+.report-table .table-wrap { max-height: 52vh; }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; }
 .dialog-head .h3 { font-size: 19px; font-weight: 800; }
 @keyframes fade { from { opacity: 0; } }
@@ -383,3 +386,8 @@ textarea.input { resize: vertical; }
 .splash-card p { color: var(--ink-2); font-size: 14px; opacity: 1; }
 .btn-lg { height: 48px; font-size: 15px; }
 .btn-block { width: 100%; }
+
+/* Counter photos */
+.photo-full { display: block; max-width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 12px; object-fit: contain; background: var(--page); }
+.sheet-lines { display: flex; flex-direction: column; gap: 8px; }
+.sheet-lines .table-wrap { max-height: 360px; }

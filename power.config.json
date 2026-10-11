@@ -123,6 +123,11 @@
           "entitySetName": "audits",
           "logicalName": "audit",
           "isHidden": false
+        },
+        "notes": {
+          "entitySetName": "annotations",
+          "logicalName": "annotation",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""
