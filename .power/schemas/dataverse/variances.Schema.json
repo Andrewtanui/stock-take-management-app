@@ -271,7 +271,10 @@
             "Wrong basket on sale",
             "In transit",
             "Cancelled contract",
-            "Not yet known"
+            "Not yet known",
+            "Partial delivery: rest still at third party",
+            "Weight loss: claim from warehouse",
+            "Posting timing / late posting"
           ],
           "x-ms-enum-values": [
             614500000,
@@ -283,9 +286,15 @@
             614500006,
             614500007,
             614500008,
-            614500009
+            614500009,
+            614500010,
+            614500011,
+            614500012
           ],
           "Color": [
+            null,
+            null,
+            null,
             null,
             null,
             null,
@@ -546,7 +555,10 @@
             "Wrong basket on sale",
             "In transit",
             "Cancelled contract",
-            "Not yet known"
+            "Not yet known",
+            "Partial delivery: rest still at third party",
+            "Weight loss: claim from warehouse",
+            "Posting timing / late posting"
           ],
           "x-ms-enum-values": [
             614500000,
@@ -558,9 +570,15 @@
             614500006,
             614500007,
             614500008,
-            614500009
+            614500009,
+            614500010,
+            614500011,
+            614500012
           ],
           "Color": [
+            null,
+            null,
+            null,
             null,
             null,
             null,

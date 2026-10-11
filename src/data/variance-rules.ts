@@ -43,6 +43,13 @@ export interface VarianceDraft {
 }
 
 const n = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+
+/**
+ * A lot XBS took in within this many days (at the snapshot) is still settling
+ * after delivery: Logistics see partial "shuttle" deliveries and weight lost on
+ * the way, both handled with the third-party warehouse (discovery, Logistics).
+ */
+const RECENT_DAYS = 14;
 const plural = (x: number, w: string) => `${n(Math.abs(x))} ${w}${Math.abs(x) === 1 ? "" : "s"}`;
 
 export function draftVariances(
@@ -91,6 +98,9 @@ export function draftVariances(
     const elsewhereUnits = elsewhere.reduce((a, l) => a + l.u, 0);
     const elsewhereWhere = [...new Set(elsewhere.map(where))].slice(0, 3).join(", ");
     const d = countedUnits - expectedUnits;
+    const days = expected.map((l) => l.d).filter((x): x is number => typeof x === "number");
+    const recentDays = days.length ? Math.min(...days) : undefined;
+    const recent = recentDays !== undefined && recentDays <= RECENT_DAYS;
 
     let cause: RootCause;
     let why: string;
@@ -106,9 +116,15 @@ export function draftVariances(
     } else if (countedUnits === 0 && elsewhere.length) {
       cause = "Split lot";
       why = `Nothing found here, but XBS also has ${plural(elsewhereUnits, "unit")} of this outturn at ${elsewhereWhere}. The bags may be stacked there.`;
+    } else if (d === 0 && countedKg < expectedKg && recent) {
+      cause = "Weight loss: claim from warehouse";
+      why = `The bag count matches XBS (${countedUnits}) but the weight is ${n(expectedKg - countedKg)} kg under. XBS took this lot in ${recentDays} day${recentDays === 1 ? "" : "s"} ago; weight lost on delivery is claimed from the third-party warehouse.`;
     } else if (d === 0) {
       cause = "Pocket / unit difference";
       why = `The bag count matches XBS (${countedUnits}); the weight differs by ${n(countedKg - expectedKg)} kg. Check pocket weights and the packing type.`;
+    } else if (d < 0 && recent && !elsewhere.length) {
+      cause = "Partial delivery: rest still at third party";
+      why = `${plural(d, "unit")} short. XBS took this lot in ${recentDays} day${recentDays === 1 ? "" : "s"} ago, so the rest of the delivery may still be at the third-party warehouse. Check with Logistics before recounting.`;
     } else if (elsewhere.length) {
       cause = "Split lot";
       why = `${plural(d, "unit")} ${d < 0 ? "short" : "over"}. XBS also has ${plural(elsewhereUnits, "unit")} of this outturn at ${elsewhereWhere}, so bags may have been stacked in the wrong place.`;

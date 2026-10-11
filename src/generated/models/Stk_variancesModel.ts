@@ -22,7 +22,10 @@ export const Stk_variancesstk_cause = {
   614500006: 'Wrong basket on sale',
   614500007: 'In transit',
   614500008: 'Cancelled contract',
-  614500009: 'Not yet known'
+  614500009: 'Not yet known',
+  614500010: 'Partial delivery: rest still at third party',
+  614500011: 'Weight loss: claim from warehouse',
+  614500012: 'Posting timing / late posting'
 } as const;
 export type Stk_variancesstk_cause = keyof typeof Stk_variancesstk_cause;
 export const Stk_variancesstk_state = {
@@ -42,7 +45,10 @@ export const Stk_variancesstk_suggestedcause = {
   614500006: 'Wrong basket on sale',
   614500007: 'In transit',
   614500008: 'Cancelled contract',
-  614500009: 'Not yet known'
+  614500009: 'Not yet known',
+  614500010: 'Partial delivery: rest still at third party',
+  614500011: 'Weight loss: claim from warehouse',
+  614500012: 'Posting timing / late posting'
 } as const;
 export type Stk_variancesstk_suggestedcause = keyof typeof Stk_variancesstk_suggestedcause;
 

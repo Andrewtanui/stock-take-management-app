@@ -6,7 +6,19 @@ import { Chip, PageHead, Tabs, type Tone } from "../ui/kit";
 import { PhotoButton } from "../ui/PhotoButton";
 
 const TONE: Record<Issue["status"], Tone> = { Open: "warn", "In progress": "info", Resolved: "ok" };
-const CAUSES: (RootCause | "")[] = ["", "Split lot", "Unposted receipt", "Duplicate entry", "Mapping error", "Pocket / unit difference", "In transit", "Not yet known"];
+const CAUSES: (RootCause | "")[] = [
+  "",
+  "Split lot",
+  "Unposted receipt",
+  "Duplicate entry",
+  "Mapping error",
+  "Pocket / unit difference",
+  "In transit",
+  "Partial delivery: rest still at third party",
+  "Weight loss: claim from warehouse",
+  "Posting timing / late posting",
+  "Not yet known",
+];
 
 export default function Issues() {
   const store = useStore();

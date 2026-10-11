@@ -32,7 +32,10 @@ export const Stk_issuesstk_linkedcause = {
   614500006: 'Wrong basket on sale',
   614500007: 'In transit',
   614500008: 'Cancelled contract',
-  614500009: 'Not yet known'
+  614500009: 'Not yet known',
+  614500010: 'Partial delivery: rest still at third party',
+  614500011: 'Weight loss: claim from warehouse',
+  614500012: 'Posting timing / late posting'
 } as const;
 export type Stk_issuesstk_linkedcause = keyof typeof Stk_issuesstk_linkedcause;
 export const Stk_issuesstk_status = {

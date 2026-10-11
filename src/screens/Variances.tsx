@@ -16,6 +16,9 @@ const CAUSES: RootCause[] = [
   "Wrong basket on sale",
   "In transit",
   "Cancelled contract",
+  "Partial delivery: rest still at third party",
+  "Weight loss: claim from warehouse",
+  "Posting timing / late posting",
   "Not yet known",
 ];
 

@@ -41,6 +41,8 @@ const SIGNOFF = { signed: 614500000, sentBack: 614500001, finance: 614500003 };
 const STOCKTAKE = { completed: 614500003 };
 /** F4: calendar days overdue before each escalation step. */
 const ESCALATE = { hodAfterDays: 3, cfmAfterDays: 7 };
+/** F8: share of a warehouse's XBS lines that must be counted before its difference is shown. */
+const COMPLETE_PCT = 95;
 /** Gate just signed → who signs next (CHAIN order: Operations → Warehouse → Trading → Finance). */
 const NEXT_GATE = {
   614500000: "Warehouse — physical position by warehouse",
@@ -94,13 +96,15 @@ function getRow(entitySet, recordId, select, runAfter) {
   };
 }
 
-/** Dataverse "List rows". */
-function listRows(entitySet, { select, filter, orderBy, top }, runAfter) {
+/** Dataverse "List rows"; `fetchXml` runs a FetchXML query instead (e.g. totals). */
+function listRows(entitySet, { select, filter, orderBy, top, fetchXml }, runAfter) {
   return {
     type: "OpenApiConnection",
     inputs: {
       host: { connectionName: "shared_commondataserviceforapps", operationId: "ListRecords", apiId: apiId("shared_commondataserviceforapps") },
-      parameters: { entityName: entitySet, $select: select, ...(filter ? { $filter: filter } : {}), ...(orderBy ? { $orderby: orderBy } : {}), ...(top ? { $top: top } : {}) },
+      parameters: fetchXml
+        ? { entityName: entitySet, fetchXml }
+        : { entityName: entitySet, $select: select, ...(filter ? { $filter: filter } : {}), ...(orderBy ? { $orderby: orderBy } : {}), ...(top ? { $top: top } : {}) },
       authentication: auth,
     },
     runAfter: runAfter ? { [runAfter]: ["Succeeded"] } : {},
@@ -647,6 +651,189 @@ export function flows(cfg) {
           "Same_person_blocked",
         ),
       }),
+    },
+    {
+      name: "IBKY F8 · Count report the day after the count (daily 06:30)",
+      description: "Each morning: if a stock take was counted yesterday, email counted vs XBS per warehouse, sheet status and the biggest differences to CountReportDistribution, and post a short note in the channel.",
+      data: clientdata(
+        "Every_morning",
+        { type: "Recurrence", recurrence: { frequency: "Day", interval: 1, schedule: { hours: ["6"], minutes: [30] }, timeZone: "E. Africa Standard Time" } },
+        {
+          Get_distribution: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'CountReportDistribution'", top: 1 }, null),
+          Get_date_override: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'CountReportDate'", top: 1 }, "Get_distribution"),
+          // Yesterday in Nairobi, unless the setting names a date (for a re-send or a test).
+          Report_date: {
+            type: "Compose",
+            inputs:
+              "@if(or(empty(first(outputs('Get_date_override')?['body/value'])?['stk_value']), equals(toLower(coalesce(first(outputs('Get_date_override')?['body/value'])?['stk_value'], 'auto')), 'auto')), " +
+              "formatDateTime(addDays(convertFromUtc(utcNow(), 'E. Africa Standard Time'), -1), 'yyyy-MM-dd'), first(outputs('Get_date_override')?['body/value'])?['stk_value'])",
+            runAfter: after("Get_date_override"),
+          },
+          Count_day: { type: "Compose", inputs: "@formatDateTime(outputs('Report_date'), 'd MMM yyyy')", runAfter: after("Report_date") },
+          Get_sites: listRows("stk_sites", { select: "stk_siteid,stk_name" }, "Count_day"),
+          Get_stock_takes: listRows("stk_stocktakes", { select: "stk_stocktakeid,stk_name,stk_countdate,_stk_import_value", filter: "stk_countdate eq @{outputs('Report_date')}" }, "Get_sites"),
+          // Variables live at the top level; each stock take resets them.
+          Init_rows: { type: "InitializeVariable", inputs: { variables: [{ name: "rows", type: "string", value: "" }] }, runAfter: after("Get_stock_takes") },
+          Init_totals: { type: "InitializeVariable", inputs: { variables: [{ name: "totals", type: "array", value: [] }] }, runAfter: after("Init_rows") },
+          For_each_stock_take: {
+            type: "Foreach",
+            foreach: "@outputs('Get_stock_takes')?['body/value']",
+            runtimeConfiguration: { concurrency: { repetitions: 1 } },
+            actions: {
+              XBS_by_warehouse: listRows(
+                "stk_xbslines",
+                {
+                  fetchXml:
+                    "<fetch aggregate='true'><entity name='stk_xbsline'><attribute name='stk_site' groupby='true' alias='site'/><attribute name='stk_kg' aggregate='sum' alias='kg'/>" +
+                    "<attribute name='stk_xbslineid' aggregate='count' alias='lines'/><filter><condition attribute='stk_import' operator='eq' value='@{items('For_each_stock_take')?['_stk_import_value']}'/></filter></entity></fetch>",
+                },
+                null,
+              ),
+              Counted_by_warehouse: listRows(
+                "stk_countlines",
+                {
+                  fetchXml:
+                    "<fetch aggregate='true'><entity name='stk_countline'><attribute name='stk_site' groupby='true' alias='site'/><attribute name='stk_kg' aggregate='sum' alias='kg'/>" +
+                    "<attribute name='stk_countlineid' aggregate='count' alias='lines'/><filter><condition attribute='stk_isother' operator='ne' value='1'/></filter>" +
+                    "<link-entity name='stk_countsheet' from='stk_countsheetid' to='stk_countsheet' link-type='inner'><filter><condition attribute='stk_stocktake' operator='eq' value='@{items('For_each_stock_take')?['stk_stocktakeid']}'/></filter></link-entity></entity></fetch>",
+                },
+                "XBS_by_warehouse",
+              ),
+              Reset_rows: { type: "SetVariable", inputs: { name: "rows", value: "" }, runAfter: after("Counted_by_warehouse") },
+              Reset_totals: { type: "SetVariable", inputs: { name: "totals", value: [] }, runAfter: after("Reset_rows") },
+              For_each_warehouse: {
+                type: "Foreach",
+                foreach: "@reverse(sort(outputs('XBS_by_warehouse')?['body/value'], 'kg'))",
+                runtimeConfiguration: { concurrency: { repetitions: 1 } },
+                actions: {
+                  Counted_here: { type: "Query", inputs: { from: "@outputs('Counted_by_warehouse')?['body/value']", where: "@equals(string(item()?['site']), string(items('For_each_warehouse')?['site']))" }, runAfter: {} },
+                  Warehouse_name: { type: "Query", inputs: { from: "@outputs('Get_sites')?['body/value']", where: "@equals(string(item()?['stk_siteid']), string(items('For_each_warehouse')?['site']))" }, runAfter: after("Counted_here") },
+                  Figures: {
+                    type: "Compose",
+                    inputs: {
+                      name: "@coalesce(first(body('Warehouse_name'))?['stk_name'], 'Warehouse')",
+                      xbs: "@div(float(coalesce(items('For_each_warehouse')?['kg'], 0)), 60)",
+                      counted: "@if(empty(body('Counted_here')), 0, div(float(coalesce(first(body('Counted_here'))?['kg'], 0)), 60))",
+                      countedLines: "@if(empty(body('Counted_here')), 0, first(body('Counted_here'))?['lines'])",
+                      xbsLines: "@items('For_each_warehouse')?['lines']",
+                    },
+                    runAfter: after("Warehouse_name"),
+                  },
+                  // Share of the warehouse's XBS lines that have a count line. Below
+                  // COMPLETE_PCT a difference would only show an unfinished count.
+                  Coverage: {
+                    type: "Compose",
+                    inputs: "@if(equals(int(coalesce(outputs('Figures')?['xbsLines'], 0)), 0), 0, div(mul(float(outputs('Figures')?['countedLines']), 100), float(outputs('Figures')?['xbsLines'])))",
+                    runAfter: after("Figures"),
+                  },
+                  Add_row: {
+                    type: "AppendToStringVariable",
+                    inputs: {
+                      name: "rows",
+                      value:
+                        "<tr><td>@{outputs('Figures')?['name']}</td><td style='text-align:right'>@{formatNumber(outputs('Figures')?['xbs'], 'N1')}</td>" +
+                        "<td style='text-align:right'>@{if(equals(outputs('Figures')?['countedLines'], 0), 'not counted', formatNumber(outputs('Figures')?['counted'], 'N1'))}</td>" +
+                        "<td style='text-align:right'>@{if(equals(outputs('Figures')?['countedLines'], 0), '', if(less(outputs('Coverage'), " + COMPLETE_PCT + "), 'count incomplete', formatNumber(sub(outputs('Figures')?['counted'], outputs('Figures')?['xbs']), 'N1')))}</td>" +
+                        "<td style='text-align:right'>@{outputs('Figures')?['countedLines']} of @{outputs('Figures')?['xbsLines']} (@{formatNumber(outputs('Coverage'), 'N0')}%)</td></tr>",
+                    },
+                    runAfter: after("Coverage"),
+                  },
+                  Add_total: {
+                    type: "AppendToArrayVariable",
+                    inputs: { name: "totals", value: "@outputs('Figures')" },
+                    runAfter: after("Add_row"),
+                  },
+                },
+                runAfter: after("Reset_totals"),
+              },
+              Counted_warehouses: { type: "Query", inputs: { from: "@variables('totals')", where: "@greater(item()?['countedLines'], 0)" }, runAfter: after("For_each_warehouse") },
+              Get_sheets: listRows("stk_countsheets", { select: "stk_status", filter: "_stk_stocktake_value eq @{items('For_each_stock_take')?['stk_stocktakeid']}" }, "Counted_warehouses"),
+              Sheets_approved: { type: "Query", inputs: { from: "@outputs('Get_sheets')?['body/value']", where: `@equals(item()?['stk_status'], ${SHEET.approved})` }, runAfter: after("Get_sheets") },
+              Sheets_waiting: { type: "Query", inputs: { from: "@outputs('Get_sheets')?['body/value']", where: `@equals(item()?['stk_status'], ${SHEET.submitted})` }, runAfter: after("Sheets_approved") },
+              Get_variances: listRows(
+                "stk_variances",
+                { select: "stk_name,stk_outturn,stk_expectedunits,stk_countedunits,stk_expectedkg,stk_countedkg,stk_suggestedcause,stk_cause,_stk_site_value,_stk_stack_value", filter: "_stk_stocktake_value eq @{items('For_each_stock_take')?['stk_stocktakeid']}" },
+                "Sheets_waiting",
+              ),
+              Variance_rows: {
+                type: "Select",
+                inputs: {
+                  from: "@outputs('Get_variances')?['body/value']",
+                  select: {
+                    Variance: "@item()?['stk_name']",
+                    Warehouse: "@item()?['_stk_site_value@OData.Community.Display.V1.FormattedValue']",
+                    Stack: "@coalesce(item()?['_stk_stack_value@OData.Community.Display.V1.FormattedValue'], '')",
+                    Outturn: "@item()?['stk_outturn']",
+                    "XBS units": "@item()?['stk_expectedunits']",
+                    "Counted units": "@item()?['stk_countedunits']",
+                    "Difference eq60": "@formatNumber(div(sub(float(coalesce(item()?['stk_countedkg'], 0)), float(coalesce(item()?['stk_expectedkg'], 0))), 60), 'N1')",
+                    Cause: "@coalesce(item()?['stk_cause@OData.Community.Display.V1.FormattedValue'], item()?['stk_suggestedcause@OData.Community.Display.V1.FormattedValue'], '')",
+                    // Size of the difference either way, to rank them.
+                    size: "@if(less(float(coalesce(item()?['stk_countedkg'], 0)), float(coalesce(item()?['stk_expectedkg'], 0))), sub(float(coalesce(item()?['stk_expectedkg'], 0)), float(coalesce(item()?['stk_countedkg'], 0))), sub(float(coalesce(item()?['stk_countedkg'], 0)), float(coalesce(item()?['stk_expectedkg'], 0))))",
+                  },
+                },
+                runAfter: after("Get_variances"),
+              },
+              Biggest: {
+                type: "Select",
+                inputs: {
+                  from: "@take(reverse(sort(body('Variance_rows'), 'size')), 10)",
+                  select: {
+                    Variance: "@item()?['Variance']", Warehouse: "@item()?['Warehouse']", Stack: "@item()?['Stack']", Outturn: "@item()?['Outturn']",
+                    "XBS units": "@item()?['XBS units']", "Counted units": "@item()?['Counted units']", "Difference eq60": "@item()?['Difference eq60']", Cause: "@item()?['Cause']",
+                  },
+                },
+                runAfter: after("Variance_rows"),
+              },
+              Biggest_rows: {
+                type: "Select",
+                inputs: {
+                  from: "@body('Biggest')",
+                  select:
+                    "@concat('<tr><td>', item()?['Variance'], '</td><td>', item()?['Warehouse'], '</td><td>', item()?['Stack'], '</td><td>', item()?['Outturn'], " +
+                    "'</td><td style=\"text-align:right\">', string(item()?['XBS units']), '</td><td style=\"text-align:right\">', string(item()?['Counted units']), " +
+                    "'</td><td style=\"text-align:right\">', item()?['Difference eq60'], '</td><td>', item()?['Cause'], '</td></tr>')",
+                },
+                runAfter: after("Biggest"),
+              },
+              Biggest_table: {
+                type: "Compose",
+                inputs:
+                  "<table border='1' cellpadding='6' style='border-collapse:collapse'><tr><th>Variance</th><th>Warehouse</th><th>Stack</th><th>Outturn</th>" +
+                  "<th>XBS units</th><th>Counted units</th><th>Difference eq60</th><th>Cause</th></tr>@{join(body('Biggest_rows'), '')}</table>",
+                runAfter: after("Biggest_rows"),
+              },
+              Email_the_report: {
+                type: "OpenApiConnection",
+                inputs: {
+                  host: { connectionName: "shared_office365", operationId: "SendEmailV2", apiId: apiId("shared_office365") },
+                  parameters: {
+                    "emailMessage/To": "@{first(outputs('Get_distribution')?['body/value'])?['stk_value']}",
+                    "emailMessage/Subject": "Stock take count report: @{items('For_each_stock_take')?['stk_name']} (counted @{outputs('Count_day')})",
+                    "emailMessage/Body":
+                      "<p>The count for <b>@{items('For_each_stock_take')?['stk_name']}</b> took place on @{outputs('Count_day')}. First results, before supervisors finish their review:</p>" +
+                      "<h3>Counted vs XBS, 60 kg equivalents</h3><table border='1' cellpadding='6' style='border-collapse:collapse'>" +
+                      "<tr><th>Warehouse</th><th>XBS</th><th>Counted</th><th>Difference</th><th>Lines counted</th></tr>@{variables('rows')}</table>" +
+                      "<p>@{length(body('Counted_warehouses'))} of @{length(variables('totals'))} warehouses counted. Count sheets: @{length(body('Sheets_approved'))} approved, @{length(body('Sheets_waiting'))} waiting for approval, @{length(outputs('Get_sheets')?['body/value'])} in total.</p>" +
+                      "<h3>Biggest differences so far</h3>@{if(empty(body('Biggest')), '<p>No variances recorded yet. They appear once the Hub has processed the submitted stacks.</p>', outputs('Biggest_table'))}" +
+                      `<p>Not counted: no count lines for that warehouse yet (third parties are usually confirmed, not counted). Count incomplete: under ${COMPLETE_PCT}% of the warehouse's XBS lines counted, so a difference would only show unfinished counting. Full detail: <a href="${APP_LINK.management}">Stock Management Hub → Reports</a>.</p>` +
+                      "<p style='color:#666'>Contains XBS figures: do not forward to counters (counting is blind).</p>",
+                    "emailMessage/Importance": "Normal",
+                  },
+                  authentication: auth,
+                },
+                runAfter: after("Biggest_table"),
+              },
+              Post_to_channel: teamsPost(
+                channel,
+                "<p><b>Count report sent</b> — @{items('For_each_stock_take')?['stk_name']} (counted @{outputs('Count_day')}): @{length(body('Counted_warehouses'))} warehouses counted, @{length(outputs('Get_variances')?['body/value'])} variances so far. The summary is in your email.</p>",
+                "Email_the_report",
+              ),
+            },
+            runAfter: after("Init_totals"),
+          },
+        },
+      ),
     },
     {
       name: "IBKY F7a · Problem reported → supervisors",

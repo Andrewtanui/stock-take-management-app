@@ -41,7 +41,10 @@ export const Stk_exceptionsstk_kind = {
   614500009: 'Not yet known',
   614500010: 'Master data',
   614500011: 'Third party',
-  614500012: 'Direct purchase'
+  614500012: 'Direct purchase',
+  614500013: 'Partial delivery: rest still at third party',
+  614500014: 'Weight loss: claim from warehouse',
+  614500015: 'Posting timing / late posting'
 } as const;
 export type Stk_exceptionsstk_kind = keyof typeof Stk_exceptionsstk_kind;
 export const Stk_exceptionsstk_source = {

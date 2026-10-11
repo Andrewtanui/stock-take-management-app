@@ -44,6 +44,8 @@ const SETTINGS = [
   ["MappingApprovers", "andrew.tanui@pathwaystechnologies.com", "Who approves basket/outturn mapping changes (flow F6). Emails separated by ;. Set to the Finance approvers for go-live."],
   ["SignOffDistribution", "andrew.tanui@pathwaystechnologies.com", "Who gets the sign-off pack email when Finance certifies a stock take (flow F5). Emails separated by ;."],
   ["HeadsOfDepartment", "{\"Operations\": \"andrew.tanui@pathwaystechnologies.com\", \"Warehouse\": \"andrew.tanui@pathwaystechnologies.com\", \"Trading\": \"andrew.tanui@pathwaystechnologies.com\", \"Finance\": \"andrew.tanui@pathwaystechnologies.com\", \"Logistics\": \"andrew.tanui@pathwaystechnologies.com\", \"Quality\": \"andrew.tanui@pathwaystechnologies.com\", \"IT\": \"andrew.tanui@pathwaystechnologies.com\"}", "Department → head of department email, as JSON. Exceptions 3+ days overdue escalate here (flow F4)."],
+  ["CountReportDistribution", "andrew.tanui@pathwaystechnologies.com", "Who gets the count report the morning after the count (flow F8). Emails separated by ;. It shows XBS figures: never include counters (counting is blind)."],
+  ["CountReportDate", "auto", "auto = report on the stock take counted yesterday (flow F8). A date (yyyy-MM-dd) re-sends the report for that count date; set back to auto afterwards."],
   ["CountryFinanceManager", "andrew.tanui@pathwaystechnologies.com", "Exceptions 7+ days overdue escalate to this email (flow F4)."],
 ];
 const IMPORT = {

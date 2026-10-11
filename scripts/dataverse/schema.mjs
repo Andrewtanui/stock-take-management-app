@@ -29,6 +29,9 @@ const ROOT_CAUSES = [
   "Cancelled contract",
   "Not yet known",
 ];
+// Added 11 Oct 2026 from the Finance and Logistics discovery sessions. Appended
+// (never inserted) so existing option values, which flows use, stay the same.
+const NEW_CAUSES = ["Partial delivery: rest still at third party", "Weight loss: claim from warehouse", "Posting timing / late posting"];
 
 export const CHOICES = {
   stk_stocktype: ["Stock type", ["Warehouse", "Blocked for processing"]],
@@ -55,9 +58,9 @@ export const CHOICES = {
       "Not sure, supervisor to check",
     ],
   ],
-  stk_rootcause: ["Root cause", ROOT_CAUSES],
+  stk_rootcause: ["Root cause", [...ROOT_CAUSES, ...NEW_CAUSES]],
   stk_variancestate: ["Variance state", ["Open", "Recount sent", "Accepted", "Exception raised"]],
-  stk_exceptionkind: ["Exception kind", [...ROOT_CAUSES, "Master data", "Third party", "Direct purchase"]],
+  stk_exceptionkind: ["Exception kind", [...ROOT_CAUSES, "Master data", "Third party", "Direct purchase", ...NEW_CAUSES]],
   stk_exceptionsource: ["Exception source", ["Count", "Import", "Pre-count check", "Reconciliation"]],
   stk_exceptionstatus: ["Exception status", ["Open", "In progress", "Escalated", "Closed"]],
   stk_department: ["Department", ["Operations", "Warehouse", "Trading", "Finance", "Logistics", "Quality", "IT"]],
