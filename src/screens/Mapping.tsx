@@ -4,6 +4,7 @@ import { PACK_TYPES, can, outturnMap } from "../data/repository";
 import { useStore } from "../data/store";
 import type { BasketMap, PrimaryBasket } from "../data/types";
 import { Chip, Code, Dialog, PageHead, ReadOnly, Tabs, n, type Tone } from "../ui/kit";
+import { MATCH_TOLERANCE_KG } from "../shared/count-rules";
 
 type T = "basket" | "outturn" | "changes" | "rules";
 const PRIMARY: PrimaryBasket[] = ["Plus", "FAQ", "Grinder"];
@@ -160,7 +161,7 @@ export default function Mapping() {
             <dt>Pocket rule</dt>
             <dd>At most one pocket per outturn at a location (each place of a split lot has its own); any weight above 0 kg</dd>
             <dt>Match tolerance</dt>
-            <dd>0 units and ±0.05 kg</dd>
+            <dd>0 units and within {MATCH_TOLERANCE_KG} kg (pockets are weighed to the whole kilo)</dd>
           </dl>
         </section>
       )}

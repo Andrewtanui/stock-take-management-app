@@ -88,6 +88,7 @@ import type {
   XbsLine,
 } from "../types";
 import type { DataSource, MgmtData, Signature, Today, XbsUploadToSave } from "./types";
+import { MATCH_TOLERANCE_KG } from "../../shared/count-rules";
 import { CHAIN } from "../repository";
 
 /* ---------- helpers ---------- */
@@ -381,7 +382,7 @@ async function load(): Promise<MgmtData> {
     all(
       (o) => Stk_variancesService.getAll(o),
       {
-        select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_grade", "stk_expectedunits", "stk_countedunits", "stk_suggestedcause", "stk_suggestionwhy", "stk_cause", "stk_state", "_stk_countline_value", "createdon"],
+        select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_grade", "stk_expectedunits", "stk_countedunits", "stk_expectedkg", "stk_countedkg", "stk_suggestedcause", "stk_suggestionwhy", "stk_cause", "stk_state", "_stk_countline_value", "createdon"],
         filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`,
         orderBy: ["stk_name asc"],
       },
@@ -425,6 +426,8 @@ async function load(): Promise<MgmtData> {
       grade: v.stk_grade ?? "",
       expected: v.stk_expectedunits ?? 0,
       counted: v.stk_countedunits ?? 0,
+      expectedKg: v.stk_expectedkg ?? undefined,
+      countedKg: v.stk_countedkg ?? undefined,
       cause: (label(Stk_variancesstk_cause, v.stk_cause) ?? label(Stk_variancesstk_suggestedcause, v.stk_suggestedcause) ?? "Not yet known") as RootCause,
       why: v.stk_suggestionwhy ?? "",
       counter: line ? nm(line._createdby_value) : "—",
@@ -753,7 +756,7 @@ async function syncVariances(
 ) {
   const existing = await all(
     (o) => Stk_variancesService.getAll(o),
-    { select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_countedunits", "stk_expectedunits", "stk_state", "_stk_countline_value", "stk_lotkey"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` },
+    { select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_countedunits", "stk_expectedunits", "stk_countedkg", "stk_expectedkg", "stk_state", "_stk_countline_value", "stk_lotkey"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` },
     "read variances",
   );
   const siteCodeOf = new Map([...siteIdOf.entries()].map(([k, v]) => [v, k]));
@@ -781,7 +784,12 @@ async function syncVariances(
         await Stk_variancesService.update(v.stk_varianceid, {
           stk_state: code(Stk_variancesstk_state, "Accepted"),
           stk_countedunits: v.stk_expectedunits,
-          stk_suggestionwhy: v.stk_state === recountSent ? "The blind recount matched XBS." : "The count was corrected and now matches XBS.",
+          stk_suggestionwhy:
+            v.stk_countedunits === v.stk_expectedunits && Math.abs((v.stk_countedkg ?? 0) - (v.stk_expectedkg ?? 0)) < MATCH_TOLERANCE_KG
+              ? `Within ${MATCH_TOLERANCE_KG} kg of XBS (pockets are weighed to the whole kilo); accepted automatically.`
+              : v.stk_state === recountSent
+                ? "The blind recount matched XBS."
+                : "The count was corrected and now matches XBS.",
           stk_decidedon: new Date().toISOString(),
         } as never),
         "accept a matched recount",

@@ -72,7 +72,7 @@ const countedSites = (counts: CountRow[]) => new Set(counts.map((c) => c.site));
  * Comparing a half-finished count with the whole warehouse would make it
  * look short when it is only unfinished.
  */
-function comparable(input: ReportInput, counts: CountRow[]) {
+export function comparable(input: { stacks: StackInfo[] }, counts: CountRow[]) {
   const done = new Set(input.stacks.filter((s) => s.status !== "In progress").map((s) => `${s.site}|${s.name}`));
   const counted = countedSites(counts);
   const thirdParty = new Set(SITES.filter((s) => s.thirdParty).map((s) => s.code));

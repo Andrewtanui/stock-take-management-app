@@ -38,7 +38,7 @@ const SETTINGS = [
   ["SignOffWorkingDays", "7", "SOP: sign-off within this many working days of the count"],
   ["ExceptionSlaWorkingDays", "5", "Working days to close an exception before escalation"],
   ["ThirdPartyAgeDays", "21", "Third-party stock older than this breaks the call-off rule"],
-  ["MatchToleranceKg", "0.05", "Weight difference still treated as a match"],
+  ["MatchToleranceKg", "1", "Weight difference still treated as a match (pockets are weighed to the whole kg)"],
   ["AvgValueUsdPerTonne", "7383", "Average coffee value for value-at-risk (Kenya Variables sheet)"],
   ["EnforceSeparationOfDuties", "false", "true = a mapping change can't be approved by the person who requested it. Off in the dev environment (one user); turn on for go-live."],
   ["MappingApprovers", "andrew.tanui@pathwaystechnologies.com", "Who approves basket/outturn mapping changes (flow F6). Emails separated by ;. Set to the Finance approvers for go-live."],

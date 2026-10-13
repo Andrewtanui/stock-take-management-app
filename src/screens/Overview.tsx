@@ -1,6 +1,7 @@
 import { ArrowRight, Check } from "lucide-react";
 import { useNav, type Page } from "../App";
-import { CHAIN, TARGET_PCT, TODAY, coverage, reconciliation, sum } from "../data/repository";
+import { netVariance } from "../data/recon";
+import { CHAIN, TARGET_PCT, TODAY, coverage, sum } from "../data/repository";
 import { useStore } from "../data/store";
 import { Chip, Progress, Stat, n, signed } from "../ui/kit";
 import { Headline } from "../ui/Logo";
@@ -14,10 +15,9 @@ export default function Overview() {
   const cov = coverage();
   const total = sum(cov, (c) => c.total);
   const done = sum(cov, (c) => c.done);
-  const rec = reconciliation(store.baskets).primary;
-  const xbs = sum(rec, (r) => r.xbs);
-  const phys = sum(rec, (r) => r.physical);
-  const net = ((phys - xbs) / xbs) * 100;
+  // Physical vs XBS over the stock counted so far (same rule as Reconciliation and Reports).
+  const rec = netVariance({ counts: store.counts, stacks: store.stacks, baskets: store.baskets });
+  const net = rec.pct;
   const pendingSheets = store.sheets.filter((s) => s.status === "Submitted").length;
   const rejected = store.sheets.filter((s) => s.status === "Rejected").length;
   const openVar = store.variances.filter((v) => v.state === "open").length;
@@ -61,7 +61,12 @@ export default function Overview() {
       <div className="stats">
         <Stat label="Bags counted" value={`${Math.round((done / total) * 100)}%`} note={`${n(done)} of ${n(total)}`} />
         <Stat label="Count sheets" value={`${store.sheets.filter((s) => s.status === "Approved").length} / ${store.sheets.length}`} note={`${pendingSheets} waiting · ${rejected} sent back`} />
-        <Stat label="Net variance vs XBS" value={`${signed(net, 2)}%`} tone={Math.abs(net) <= TARGET_PCT ? "ok" : "crit"} note={`Target ±${TARGET_PCT}% · ${signed(phys - xbs)} bags`} />
+        <Stat
+          label="Net variance vs XBS"
+          value={rec.counted ? `${signed(net, 2)}%` : "—"}
+          tone={!rec.counted ? undefined : Math.abs(net) <= TARGET_PCT ? "ok" : "crit"}
+          note={rec.counted ? `Target ±${TARGET_PCT}% · ${signed(rec.physical - rec.xbs, 1)} eq60 · on ${Math.round(rec.cover * 100)}% of XBS` : "Nothing counted and submitted yet"}
+        />
         <Stat
           label="Sign-off"
           value={st.status === "Completed" ? "Done" : clockRunning ? `Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}` : "Not started"}

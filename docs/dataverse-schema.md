@@ -1,18 +1,34 @@
 # Dataverse schema — IBKY Stock Take
 
-Status: **draft for review (Step 1)**. Nothing here exists in Dataverse yet.
+Status: **live in the development environment** (built 9 Oct 2026, last changed
+12 Oct 2026). This document describes what exists in Dataverse today.
+The source of truth is `scripts/dataverse/schema.mjs`; `npm run dv:schema`
+creates or extends the tables from it (it only adds, never drops).
 
-Shared by both code apps: the **Stock Take** app (counters) and the **Stock
-Management** app (Operations, Warehouse, Trading, Finance, IT). The apps never
-call each other — they read and write these tables, and Power Automate reacts to
-changes in them.
+Shared by both code apps: the **Stock Take** app (counters, phone) and the
+**Stock Management Hub** (Operations, Warehouse, Trading, Finance, IT). The apps
+never call each other: they read and write these tables, and Power Automate
+flows react to changes in them.
 
 | | |
 |---|---|
 | Environment | Andrew Tanui's Environment · `fbbef02c-fb2e-e56f-926c-4fe610004640` · https://org6c75cfc0.crm4.dynamics.com/ |
-| Solution | `IBKYStockTake` — "IBKY Stock Take" |
-| Publisher | `IberoKenya` — "Ibero Kenya" · prefix **`stk`** · choice value prefix **61450** (values 614500000+) |
-| Auditing | Dataverse auditing on for every table below (replaces a custom audit log) |
+| Web API | `https://org6c75cfc0.crm4.dynamics.com/api/data/v9.2/` (entity set = plural logical name, e.g. `stk_xbslines`) |
+| Solution | `IBKYStockTake` — "IBKY Stock Take" (unmanaged in dev) |
+| Publisher | `IberoKenya` — "Ibero Kenya" · prefix **`stk`** · choice values start at **614500000** |
+| Auditing | Dataverse auditing on for every table (no custom audit log) |
+| Notes (photos) | Enabled on `stk_countline` and `stk_issue` |
+| Security roles | 7 `STK …` roles, see [security-roles.md](security-roles.md) |
+
+## How to look at it
+
+- **Tables and data:** make.powerapps.com → this environment → Tables → filter
+  on "stk" (or Solutions → IBKY Stock Take → Tables).
+- **Power BI:** Get data → Dataverse → `org6c75cfc0.crm4.dynamics.com` → tables
+  starting `stk_`. Choice columns come through as numbers; the labels are in
+  the "Shared choices" table below, or use the `…name` virtual column.
+- **Web API / scripts:** `scripts/dataverse/api.mjs` (signs in with the Power
+  Platform CLI's account).
 
 ## Ground rules
 
@@ -20,52 +36,69 @@ changes in them.
    stored as a frozen snapshot (`stk_xbsimport`, `stk_xbsline`,
    `stk_comtrasposition`). No role can update or delete those rows. Anything
    wrong in XBS becomes an **exception** that a person fixes in XBS by hand; the
-   next import shows whether it was fixed.
+   next import shows whether it was fixed. The same snapshot can't be imported
+   twice.
 2. **Counts are facts from the floor.** A count line records what the counter
-   saw. Supervisors decide what a difference means (variance → cause), they
-   don't overwrite the count.
-3. **Every decision has a who and when.** Decisions are their own columns
+   saw. Supervisors decide what a difference means (variance → cause); they
+   don't overwrite the count. A blind recount adds a new line that replaces the
+   first in comparisons.
+3. **Counting is blind.** Counters' roles and screens never expose XBS
+   quantities; only management roles read variances.
+4. **Every decision has a who and when.** Decisions are their own columns
    (decided by / on) or rows (`stk_signoff`), plus Dataverse audit history.
-4. **Offline-safe writes.** Rows created on a phone carry a device-generated
+5. **Retry-safe writes.** Rows created on a phone carry a device-generated
    `stk_clientid` (alternate key), so a re-sent save updates instead of
-   duplicating.
+   duplicating. Variances carry a unique `stk_lotkey` for the same reason.
+6. **Nothing is deleted.** Records are closed, superseded or accepted; delete
+   behaviour is Restrict everywhere. One exception: flow F5 deletes a Finance
+   sign-off made by the pack's preparer when separation of duties is on.
 
 ## Tables at a glance
 
-| # | Table | Ownership | Written by | Read by |
-|---|---|---|---|---|
-| | **Reference & settings** | | | |
-| 1 | `stk_site` Warehouse | Org | IT Admin | everyone |
-| 2 | `stk_packtype` Packing type | Org | IT Admin | everyone |
-| 3 | `stk_setting` Setting | Org | IT Admin | everyone |
-| | **Source data (locked)** | | | |
-| 4 | `stk_xbsimport` XBS import | Org | Importer (create; status by import only) | everyone |
-| 5 | `stk_xbsline` XBS line | Org | Importer (**create only**) | everyone |
-| 6 | `stk_comtrasposition` Comtras position | Org | Importer (**create only**) | mgmt roles |
-| | **Mapping** | | | |
-| 7 | `stk_basketmap` Basket mapping | Org | via approved change only | everyone |
-| 8 | `stk_outturnmap` Outturn mapping | Org | via approved change only | everyone |
-| 9 | `stk_mappingchange` Mapping change | User | Trading, Finance, Ops (request); Finance (decide) | mgmt roles |
-| | **Stock take** | | | |
-| 10 | `stk_stocktake` Stock take | Org | Ops Admin | everyone |
-| 11 | `stk_assignment` Assignment | Org | Ops Admin | everyone (counters: own) |
-| 12 | `stk_countsheet` Count sheet | User (= counter) | Counter (create/submit); Ops/WH Mgr (decide) | counter: own; mgmt: all |
-| 13 | `stk_stack` Stack | Org | Counter (submit); Ops/WH Mgr | everyone |
-| 14 | `stk_countline` Count line | User (= counter) | Counter | counter: own sheet; mgmt: all |
-| 15 | `stk_recount` Recount | User (= assignee) | Ops/WH Mgr (create); counter (complete) | assignee; mgmt |
-| | **Reconcile & sign-off** | | | |
-| 16 | `stk_variance` Variance | Org | Mgmt app (generate); Ops/WH Mgr/Finance (decide) | mgmt roles |
-| 17 | `stk_exception` Exception | User (= owner) | mgmt roles, flows | mgmt roles |
-| 18 | `stk_signoff` Sign-off | Org | the gate's role | everyone |
-| | **Other** | | | |
-| 19 | `stk_directpurchase` Direct purchase | Org | Trading | mgmt roles |
-| 20 | `stk_issue` Problem report | User (= raiser) | Counter (create); Ops/IT (triage) | raiser: own; mgmt: all |
+Rows = what is in the dev environment on 13 Oct 2026 (test data).
 
-Org-owned = shared reference data with no per-person ownership. User-owned =
-rows belong to a person, so "counters see only their own" can be enforced by
-role depth (User level) without custom filtering.
+| # | Table | Ownership | Written by | Read by | Rows |
+|---|---|---|---|---|---|
+| | **Reference & settings** | | | | |
+| 1 | `stk_site` Warehouse | Org | IT Admin | everyone | 6 |
+| 2 | `stk_packtype` Packing type | Org | IT Admin | everyone | 2 |
+| 3 | `stk_setting` Setting | Org | IT Admin | everyone | 13 |
+| | **Source data (locked)** | | | | |
+| 4 | `stk_xbsimport` XBS import | Org | Importer (create; status by import only) | everyone | 2 |
+| 5 | `stk_xbsline` XBS line | Org | Importer (**create only**) | everyone | 2,292 |
+| 6 | `stk_comtrasposition` Comtras position | Org | Importer (**create only**) | mgmt roles | 0 |
+| | **Mapping** | | | | |
+| 7 | `stk_basketmap` Basket mapping | Org | via approved change only | everyone | 38 |
+| 8 | `stk_outturnmap` Outturn mapping | Org | via approved change only | everyone | 0 |
+| 9 | `stk_mappingchange` Mapping change | User | Trading, Finance, Ops (request); Finance (decide) | mgmt roles | 1 |
+| | **Stock take** | | | | |
+| 10 | `stk_stocktake` Stock take | Org | Ops Admin | everyone | 2 |
+| 11 | `stk_assignment` Assignment | Org | Ops Admin | everyone (counters: own) | 2 |
+| 12 | `stk_countsheet` Count sheet | User (= counter) | Counter (create/submit); Ops/WH Mgr (decide) | counter: own; mgmt: all | 2 |
+| 13 | `stk_stack` Stack | Org | Counter (create/submit); Ops/WH Mgr | everyone | 9 |
+| 14 | `stk_countline` Count line | User (= counter) | Counter (own lines) | counters: all (for "already counted" warnings, never XBS figures); mgmt: all | 16 |
+| 15 | `stk_recount` Recount | User (= assignee) | Ops/WH Mgr (create); counter (complete) | assignee; mgmt | 5 |
+| | **Reconcile & sign-off** | | | | |
+| 16 | `stk_variance` Variance | Org | Hub (generate); Ops/WH Mgr/Finance (decide) | mgmt roles | 12 |
+| 17 | `stk_exception` Exception | User (= owner) | mgmt roles, flows | mgmt roles | 27 |
+| 18 | `stk_signoff` Sign-off | Org | the gate's role | everyone | 4 |
+| | **Other** | | | | |
+| 19 | `stk_directpurchase` Direct purchase | Org | Trading | mgmt roles | 1 |
+| 20 | `stk_issue` Problem report | User (= raiser) | Counter (create); Ops/IT (triage) | raiser: own; mgmt: all | 3 |
+
+The 2,292 XBS lines are two imports: the 2 Mar 2026 export (1,460 Warehouse +
+290 Blocked = 1,750) and the September 2026 month-end, rebuilt from Finance's
+workbook (484 + 58 = 542; see `scripts/xbs/rebuild-xbs-from-finance.mjs`).
+
+Org-owned = shared data with no per-person ownership. User-owned = rows belong
+to a person, so "counters see only their own" is enforced by role depth (User
+level) without custom filtering.
 
 ## Shared choices (global option sets)
+
+Values are numbered in the order listed, from 614500000 (first value =
+614500000, second = 614500001, …). New values are only ever **appended**, so
+existing numbers, which flows and reports use, never change.
 
 | Choice | Values |
 |---|---|
@@ -78,9 +111,9 @@ role depth (User level) without custom filtering.
 | `stk_primarybasket` | Plus · FAQ · Grinder |
 | `stk_stockcategory` | Current stock · Processing stock · Work in progress · Sweepings · Loose bags · Disputed stock · Direct purchase (not in XBS) · Ex-office stock |
 | `stk_countreason` (counter's reason) | Part of the lot is at another location · Bags moved here, not yet received in XBS · Bags left this stack, not yet posted out · Torn or re-bagged bags · Pocket weighed differently · Tag missing or unreadable · Stack blocked, couldn't reach every bag · Not sure, supervisor to check |
-| `stk_rootcause` (supervisor's cause) | Split lot · Unposted receipt · Unposted gate-out · Duplicate entry · Mapping error · Pocket / unit difference · Wrong basket on sale · In transit · Cancelled contract · Not yet known |
+| `stk_rootcause` (supervisor's cause) | Split lot · Unposted receipt · Unposted gate-out · Duplicate entry · Mapping error · Pocket / unit difference · Wrong basket on sale · In transit · Cancelled contract · Not yet known · Partial delivery: rest still at third party · Weight loss: claim from warehouse · Posting timing / late posting |
 | `stk_variancestate` | Open · Recount sent · Accepted · Exception raised |
-| `stk_exceptionkind` | all `stk_rootcause` values + Master data · Third party · Direct purchase |
+| `stk_exceptionkind` | the first ten `stk_rootcause` values · Master data · Third party · Direct purchase · Partial delivery: rest still at third party · Weight loss: claim from warehouse · Posting timing / late posting |
 | `stk_exceptionsource` | Count · Import · Pre-count check · Reconciliation |
 | `stk_exceptionstatus` | Open · In progress · Escalated · Closed |
 | `stk_department` | Operations · Warehouse · Trading · Finance · Logistics · Quality · IT |
@@ -88,22 +121,36 @@ role depth (User level) without custom filtering.
 | `stk_issuecategory` | App not working · Network or saving · Lot not on the list · Tag missing or unreadable · Stack blocked or unsafe · Third-party staff not available · Other |
 | `stk_issuestatus` | Open · In progress · Resolved |
 
+The last three `stk_rootcause` values were added on 11 Oct 2026 from the
+Finance and Logistics discovery sessions. In `stk_exceptionkind` they come after
+Direct purchase, so their numbers differ between the two choices; match on the
+label, not the number, when joining the two.
+
+Local (table-only) choices: `stk_mappingchange.stk_target` (Basket · Outturn),
+`stk_mappingchange.stk_state` (Pending · Approved · Rejected),
+`stk_recount.stk_status` (Open · Done), `stk_exception.stk_escalationlevel`
+(Owner · Head of department · Country Finance Manager), `stk_signoff.stk_action`
+(Signed · Sent back), `stk_directpurchase.stk_suppliertype` (Co-operative · Agent).
+
 ## Table details
 
 Conventions: every table also has the standard `createdon`, `createdby`,
 `modifiedon`, `modifiedby`, `ownerid` (user-owned) and `statecode`. **PK** =
 primary name column. **AK** = alternate key. Lookups are N:1 unless stated.
 
-### 1. `stk_site` — Warehouse (replaces NKG_config)
+### 1. `stk_site` — Warehouse
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 100 | "Ibero Export Warehouse" |
-| `stk_code` AK | Text 10 | IBR, AGL, KPCU, MAXA, MCF, KCCE — matches XBS |
+| `stk_code` AK | Text 10 | IBR, AGL, KPCU, MAXA, MCF, KCCE |
 | `stk_shortname` | Text 40 | "Ibero" |
 | `stk_isthirdparty` | Yes/No | |
-| `stk_manualentry` | Yes/No | Off at third parties (counters pick from XBS list only) |
+| `stk_manualentry` | Yes/No | Counters may type outturns not in the XBS list (switch in Set-up) |
 | `stk_ceilingbags` | Whole number | Count-day ceiling, default 6000 |
 | `stk_hasbaylayout` | Yes/No | Ibero = Yes (rows A–G × bays 1–14) |
+
+The XBS import matches a warehouse by the **first word** of the XBS name
+("MITCHEL COTTS FREIGHT KENYA LIMITED" → Mitchel Cotts).
 
 ### 2. `stk_packtype` — Packing type
 | Column | Type | Notes |
@@ -120,51 +167,65 @@ primary name column. **AK** = alternate key. Lookups are N:1 unless stated.
 | `stk_value` | Text 2000 | Value (JSON allowed, e.g. HeadsOfDepartment) |
 | `stk_description` | Text 400 | |
 
-Seed keys: `TargetNetVariancePct` 0.10 · `SignOffWorkingDays` 7 ·
-`ExceptionSlaWorkingDays` 5 · `ThirdPartyAgeDays` 21 · `MatchToleranceKg` 0.05 ·
-`AvgValueUsdPerTonne` 7383.
+| Key | Dev value | Used by |
+|---|---|---|
+| `TargetNetVariancePct` | 0.10 | Net variance target, ± % |
+| `SignOffWorkingDays` | 7 | SOP sign-off window |
+| `ExceptionSlaWorkingDays` | 5 | Exception due date |
+| `ThirdPartyAgeDays` | 21 | Pre-count check (call-off rule) |
+| `MatchToleranceKg` | 1 | Weight still treated as a match (pockets are weighed to the whole kg; XBS keeps 0.1 kg). Mirrors `MATCH_TOLERANCE_KG` in the apps' shared rules |
+| `AvgValueUsdPerTonne` | 7383 | Value at risk |
+| `EnforceSeparationOfDuties` | false | true for go-live (requester ≠ approver, preparer ≠ Finance signer) |
+| `MappingApprovers` | email(s) | Flow F6 |
+| `SignOffDistribution` | email(s) | Flow F5 pack email |
+| `HeadsOfDepartment` | JSON department → email | Flow F4 (3+ days overdue) |
+| `CountryFinanceManager` | email | Flow F4 (7+ days overdue) |
+| `CountReportDistribution` | email(s) | Flow F8; never counters (it shows XBS figures) |
+| `CountReportDate` | auto | Flow F8; a yyyy-MM-dd date re-sends that day's report |
 
 ### 4. `stk_xbsimport` — XBS import (header)
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK, AK | Text 30 | `IMP-260302-0852` |
-| `stk_snapshotat` | Date & time | XBS export time (from file name) |
+| `stk_name` PK, AK | Text 30 | `IMP-260302-0852` (from the snapshot time) |
+| `stk_snapshotat` | Date & time | "Report Generated On" in the XBS report header (EAT) |
 | `stk_filenames` | Multiline 2000 | Both report file names |
 | `stk_rowcount` | Whole number | |
-| `stk_status` | `stk_importstatus` | Only Validating → Imported/Failed; later Superseded |
-| `stk_checks` | Multiline 100k | Check results as JSON (shown on the import screen) |
+| `stk_status` | `stk_importstatus` | Validating → Imported / Failed; Superseded when a newer import lands |
+| `stk_checks` | Multiline 100k | The 8 import check results as JSON |
 | `stk_warningcount` / `stk_failcount` | Whole number | |
 | `stk_importedby` | Lookup → systemuser | |
 
 ### 5. `stk_xbsline` — XBS line (locked)
-One row per line of either XBS report. Field names mirror the JSON snapshot.
+One row per line of either XBS report (*Current Stock – Batch Wise Detail*,
+Type Warehouse or Blocked for Processing).
 
-| Column | Type | XBS / JSON |
+| Column | Type | XBS column |
 |---|---|---|
-| `stk_name` PK | Text 100 | batch no. (`b`) |
+| `stk_name` PK | Text 100 | Batch No. |
 | `stk_import` | Lookup → stk_xbsimport | |
-| `stk_rownumber` | Whole number | AK with `stk_import` — makes re-runs of a load safe |
-| `stk_site` | Lookup → stk_site | `wh` |
-| `stk_stocktype` | `stk_stocktype` | `t` |
-| `stk_zone` | Text 40 | `z` ("D-05-1", "TEMP-0-0") |
-| `stk_outturn` | Text 30 | `o` |
-| `stk_grade` | Text 30 | `i` |
-| `stk_basketcode` / `stk_basketname` | Text 10 / Text 100 | `bc` / `bn` |
-| `stk_bags` | Whole number | `bg` |
-| `stk_pocketkg` | Decimal (2) | `pk` |
-| `stk_units` | Whole number | `u` |
-| `stk_kg` | Decimal (2) | `kg` |
-| `stk_growermark` | Text 100 | `g` |
-| `stk_warrant` | Text 40 | `wr` |
-| `stk_certification` | Text 200 | `c` |
-| `stk_cupscore` | Text 40 | `cs` |
-| `stk_blocked` | Yes/No | `bl` |
-| `stk_salescontract` | Text 20 | `so` |
-| `stk_instruction` | Text 40 | `in` |
-| `stk_daysinstock` | Whole number | `d` |
-| `stk_cropyear` | Text 12 | `cy` |
+| `stk_rownumber` | Whole number | AK with `stk_import`, so a re-run load can't duplicate |
+| `stk_site` | Lookup → stk_site | Warehouse |
+| `stk_stocktype` | `stk_stocktype` | Which report |
+| `stk_zone` | Text 40 | Zone ("D-05-1", "A/B-14-1", "TEMP-0-0") |
+| `stk_outturn` | Text 30 | Outturn No |
+| `stk_grade` | Text 30 | Item Name |
+| `stk_basketcode` / `stk_basketname` | Text 10 / Text 100 | Secondary Basket, split: "10030 (AA Plus)" → 10030 / AA Plus |
+| `stk_bags` | Whole number | Bags |
+| `stk_pocketkg` | Decimal (2) | Pockets (kg) |
+| `stk_units` | Whole number | Units |
+| `stk_kg` | Decimal (2) | Qty. |
+| `stk_growermark` | Text 100 | Grower Marks |
+| `stk_warrant` | Text 40 | Warrant No |
+| `stk_certification` | Text 200 | Certification |
+| `stk_cupscore` | Text 40 | Cup Score |
+| `stk_blocked` | Yes/No | Blocked (always Yes for the Blocked for Processing report) |
+| `stk_salescontract` | Text 20 | SO No. |
+| `stk_instruction` | Text 40 | Instruction No. |
+| `stk_daysinstock` | Whole number | Stock In Day(s) |
+| `stk_cropyear` | Text 12 | Inventory Type |
 
-~1,750 rows per import. Old imports stay (Superseded) for history.
+XBS can split one batch into several lines at the same zone; comparisons always
+add all lines of a batch at a place. Old imports stay (Superseded) for history.
 
 ### 6. `stk_comtrasposition` — Comtras position (locked)
 | Column | Type | Notes |
@@ -175,15 +236,20 @@ One row per line of either XBS report. Field names mirror the JSON snapshot.
 | `stk_bags` | Decimal (2) | Net of 537 sales relief |
 | `stk_source` | Text 200 | File name |
 
-Sample values until a real Comtras extract is provided.
+**Empty.** Waiting for a real Comtras/BRIC extract; reconciliation shows no
+Comtras figures until then (it never copies XBS).
 
-### 7. `stk_basketmap` — Basket mapping
+### 7. `stk_basketmap` — Basket mapping (secondary → primary)
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 120 | "10070 AB/PB FAQ" |
 | `stk_basketcode` AK | Text 10 | |
 | `stk_primarybasket` | `stk_primarybasket` | |
 | `stk_lastchange` | Lookup → stk_mappingchange | Change that set the current value |
+
+38 rows seeded. **Known issue:** Minus / Natural baskets are under Grinder;
+September shipments show them under FAQ 10057. Waiting for Trade & QC's mapping
+document.
 
 ### 8. `stk_outturnmap` — Outturn mapping (overrides)
 Only for outturns whose basket is missing or wrong in XBS.
@@ -202,133 +268,151 @@ Only for outturns whose basket is missing or wrong in XBS.
 | `stk_targetkey` | Text 30 | Basket code or outturn |
 | `stk_from` / `stk_to` | Text 120 | |
 | `stk_reason` | Multiline 2000 | |
-| `stk_state` | Choice: Pending · Approved · Rejected | |
-| `stk_decidedby` / `stk_decidedon` | Lookup systemuser / Date & time | Must differ from `createdby` (separation of duties) |
+| `stk_state` | Choice: Pending · Approved · Rejected | Decided in the Hub or via the Teams approval (flow F6) |
+| `stk_decidedby` / `stk_decidedon` | Lookup systemuser / Date & time | Must differ from `createdby` when separation of duties is on |
 
 ### 10. `stk_stocktake` — Stock take
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 100 | "Monthly Stock Take - 02/03/2026" |
+| `stk_name` PK | Text 100 | "Monthly Stock Take - 12/10/2026" |
 | `stk_type` | `stk_stocktaketype` | |
-| `stk_status` | `stk_stocktakestatus` | |
+| `stk_status` | `stk_stocktakestatus` | Counting is open only in Count in progress |
 | `stk_countdate` | Date | |
 | `stk_import` | Lookup → stk_xbsimport | Expected stock for this count |
-| `stk_sites` | **N:N** ↔ stk_site | Warehouses included |
+| `stk_sites` | **N:N** ↔ stk_site (`stk_stocktake_site`) | Warehouses included. Not written yet: the generated services can't write N:N, so every stock take covers all warehouses for now |
 | `stk_preparedby` | Lookup → systemuser | Prepares the reconciliation pack; can't sign Finance |
 | `stk_closedon` / `stk_closecomment` | Date & time / Multiline | |
 
-### 11. `stk_assignment` — Assignment
+### 11. `stk_assignment` — Assignment (who counts where)
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 100 | "Achieng O. · Ibero rows D–E" |
 | `stk_stocktake` | Lookup | |
-| `stk_counter` | Lookup → systemuser | |
+| `stk_counter` | Lookup → systemuser | The counter app finds the signed-in user's row |
 | `stk_site` | Lookup → stk_site | |
-| `stk_rows` | Text 20 | "D,E"; empty = whole site |
+| `stk_rows` | Text 20 | "D,E"; empty = whole site (third parties) |
+
+Copied to each new stock take from the previous one. No Hub screen to edit
+assignments yet; they are created in Dataverse.
 
 ### 12. `stk_countsheet` — Count sheet (the approval unit)
 One per counter per assignment. Owner = the counter.
 
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 30 | `CS-105` |
+| `stk_name` PK | Text 30 | `CS-MV0PXKYM` |
 | `stk_stocktake` / `stk_assignment` / `stk_site` | Lookups | |
-| `stk_status` | `stk_sheetstatus` | |
+| `stk_status` | `stk_sheetstatus` | Submitted → flow F2; Sent back → flow F3a |
 | `stk_submittedon` | Date & time | |
 | `stk_countercomment` | Multiline 2000 | |
-| `stk_decidedby` / `stk_decidedon` / `stk_decisioncomment` | Lookup / Date & time / Multiline | Comment required to send back |
-| `stk_linecount` / `stk_variancecount` / `stk_bags` | Whole number | Kept up to date by the app on submit |
+| `stk_decidedby` / `stk_decidedon` / `stk_decisioncomment` | Lookup / Date & time / Multiline | Comment required to send back; shown to the counter (no XBS figures) |
+| `stk_linecount` / `stk_variancecount` / `stk_bags` | Whole number | Kept up to date by the app |
 
 ### 13. `stk_stack` — Stack (submission unit on the floor)
-One per stock take × site × stack code. At Ibero the codes come from XBS zones;
-at third parties counters create them ("Site 2 · Stack 1").
+One per stock take × site × stack code. At Ibero the codes are bay locations
+("D-05-1", "D-05/06-1", "A/B-14-1"); at third parties counters create them
+("Site 2 · Stack 1") with a landmark.
 
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 60 | "D-05-1" |
 | `stk_stocktake` / `stk_site` / `stk_countsheet` | Lookups | |
 | `stk_landmark` | Text 200 | Third parties |
-| `stk_status` | `stk_stackstatus` | |
+| `stk_status` | `stk_stackstatus` | Submitting a stack is what makes its lots comparable |
 | `stk_submittedby` / `stk_submittedon` | Lookup / Date & time | |
 | `stk_comment` | Multiline 2000 | |
 
 ### 14. `stk_countline` — Count line
+One per outturn counted at a stack. **Notes enabled**: the tag photo is an
+annotation on the line, subject "Photo of the tag".
+
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 60 | "KGT2605 @ D-05-1" |
 | `stk_clientid` AK | Text 40 | GUID made on the device |
 | `stk_countsheet` / `stk_stack` / `stk_site` | Lookups | |
-| `stk_xbsline` | Lookup → stk_xbsline | Empty for found / other stock |
+| `stk_xbsline` | Lookup → stk_xbsline | First XBS line of the lot; empty for found / other stock |
 | `stk_outturn` / `stk_batch` / `stk_grade` | Text | As read from the tag |
 | `stk_category` | `stk_stockcategory` | |
 | `stk_packtype` | Lookup → stk_packtype | |
-| `stk_bags` / `stk_pocketbags` | Whole number | |
-| `stk_pocketkg` | Decimal (2) | |
-| `stk_units` / `stk_kg` / `stk_bags60` | Whole / Decimal | Calculated by the app's shared rules and stored, so reports don't recompute |
-| `stk_reason` | `stk_countreason` | Required when units/kg differ from XBS |
+| `stk_bags` | Whole number | Full bags |
+| `stk_pocketbags` | Whole number | 0 or 1 (one pocket per outturn per location) |
+| `stk_pocketkg` | Decimal (2) | Whole kg from the app |
+| `stk_units` | Whole number | Full bags + 1 if there is a pocket |
+| `stk_kg` | Decimal (2) | Full bags × pack kg + pocket kg |
+| `stk_bags60` | Decimal (2) | kg ÷ 60 |
+| `stk_reason` | `stk_countreason` | Optional "anything unusual" |
 | `stk_note` | Multiline 2000 | |
 | `stk_isfound` / `stk_isother` / `stk_isblind` | Yes/No | Not expected here · other stock · blind recount |
-| `stk_reference` | Text 60 | Contract / delivery note for direct purchases |
+| `stk_reference` | Text 60 | Contract / delivery note (other stock, direct purchases) |
 | `stk_recount` | Lookup → stk_recount | When this line answers a recount |
-| `stk_countedon` | Date & time | Device time (may be earlier than createdon if offline) |
+| `stk_countedon` | Date & time | Device time |
 
 ### 15. `stk_recount` — Recount request
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 30 | `R-031` |
+| `stk_name` PK | Text 30 | `R-001` |
 | `stk_stocktake` / `stk_stack` / `stk_variance` | Lookups | |
 | `stk_outturn` / `stk_batch` | Text | |
-| `stk_why` | Multiline 2000 | Shown to the counter; never the earlier figure |
+| `stk_why` | Multiline 2000 | Shown to the counter; fixed text, never the earlier figure |
 | `stk_status` | Choice: Open · Done | |
-| owner | = counter assigned | |
+| owner | = the counter who counted it | Created → flow F3b |
 
 ### 16. `stk_variance` — Variance
-Generated by the management app from count lines vs XBS lines when a sheet is
-submitted (shared rules module), then decided by a person.
+Generated by the Hub from count lines vs XBS lines once a stack is submitted
+(rules in `src/data/variance-rules.ts`), then decided by a person.
 
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 30 | `V-0412` |
+| `stk_name` PK | Text 30 | `V-0001` |
+| `stk_lotkey` AK | Text 300 | `<stock take id>\|<site>\|<stack, empty at third parties>\|<batch>`; one variance per lot |
 | `stk_stocktake` / `stk_site` / `stk_stack` | Lookups | |
-| `stk_outturn` / `stk_grade` | Text | |
+| `stk_outturn` | Text 30 | |
+| `stk_grade` | Text 100 | Grade · grower mark |
 | `stk_expectedunits` / `stk_countedunits` | Whole number | |
 | `stk_expectedkg` / `stk_countedkg` | Decimal (2) | |
 | `stk_suggestedcause` | `stk_rootcause` | From the rules (advisory) |
-| `stk_suggestionwhy` | Multiline 2000 | The evidence behind the suggestion |
+| `stk_suggestionwhy` | Multiline 2000 | The evidence behind the suggestion, or why it was auto-accepted |
 | `stk_cause` | `stk_rootcause` | Person's decision |
 | `stk_state` | `stk_variancestate` | |
 | `stk_decidedby` / `stk_decidedon` | Lookup / Date & time | |
 | `stk_countline` | Lookup → stk_countline | |
 
+A lot matches (no variance) when units are equal, kg are within
+`MatchToleranceKg`, and one person counted it. An open variance that later
+matches is set to Accepted automatically.
+
 ### 17. `stk_exception` — Exception register
-Owner = the person who must fix it.
+Owner = the person who must fix it (must hold an STK role).
 
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 200 | Title |
+| `stk_name` PK | Text 200 | "EX-201 — title" |
 | `stk_kind` | `stk_exceptionkind` | |
-| `stk_source` | `stk_exceptionsource` | |
+| `stk_source` | `stk_exceptionsource` | Import (flow F1), Pre-count check, Count (variance); Reconciliation reserved |
 | `stk_reference` | Text 60 | V-0415, IMP-…, contract no. |
 | `stk_stocktake` / `stk_variance` / `stk_import` | Lookups (optional) | |
 | `stk_department` | `stk_department` | |
 | `stk_bags` | Whole number | |
-| `stk_duedate` | Date | Raised + SLA working days |
+| `stk_duedate` | Date | Raised + `ExceptionSlaWorkingDays` working days |
 | `stk_status` | `stk_exceptionstatus` | |
-| `stk_escalationlevel` | Choice: Owner · Head of department · Country Finance Manager | Set by flow F4 |
+| `stk_escalationlevel` | Choice: Owner · Head of department · Country Finance Manager | Set by flow F4 (3 / 7 days overdue) |
 | `stk_resolution` / `stk_closedon` | Multiline / Date & time | Resolution required to close |
 
 ### 18. `stk_signoff` — Sign-off event
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 60 | "ST-2026-03 · Trading" |
+| `stk_name` PK | Text 60 | "Operations · signed" |
 | `stk_stocktake` | Lookup | |
 | `stk_gate` | `stk_gate` | |
 | `stk_action` | Choice: Signed · Sent back | |
 | `stk_signedby` / `stk_signedon` | Lookup / Date & time | |
 | `stk_comment` | Multiline 2000 | Required to send back |
 
-Rules (checked in app and in flow F5): gates sign in order; Finance signer ≠
-`stk_stocktake.stk_preparedby`; a send-back invalidates earlier signatures.
+Rules (app and flow F5): gates sign in order; the first signature moves the
+stock take to Sign-off; Finance signer ≠ `stk_stocktake.stk_preparedby` (when
+separation of duties is on); a send-back clears the earlier signatures (the rows
+stay for history). Finance signing → pack email and status Completed.
 
 ### 19. `stk_directpurchase` — Direct purchase
 | Column | Type | Notes |
@@ -340,9 +424,13 @@ Rules (checked in app and in flow F5): gates sign in order; Finance signer ≠
 | `stk_bagscontracted` / `stk_bagsinvoiced` / `stk_bagsdelivered` | Whole number | |
 | `stk_invoicedate` | Date | |
 
-Flags (invoiced-not-delivered, longs, no warrant) are computed in the app.
+Flags (invoiced-not-delivered, longs, delivered-not-in-XBS) are computed in the
+app.
 
 ### 20. `stk_issue` — Problem report
+**Notes enabled**: the photo is an annotation on the report, subject "Photo of
+the problem".
+
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 30 | `C-121` |
@@ -350,51 +438,67 @@ Flags (invoiced-not-delivered, longs, no warrant) are computed in the app.
 | `stk_site` | Lookup | |
 | `stk_screen` | Text 60 | Filled by the app |
 | `stk_description` | Multiline 4000 | |
-| `stk_status` | `stk_issuestatus` | |
-| `stk_assignedto` | Lookup → systemuser | |
+| `stk_status` | `stk_issuestatus` | Flows F7a (new), F7c (resolved) |
+| `stk_assignedto` | Lookup → systemuser | Flow F7b |
 | `stk_linkedcause` | `stk_rootcause` | Feeds variance analysis |
 | `stk_resolution` | Multiline 2000 | Reply shown to the counter |
-| `stk_photo` | File | Optional |
+| `stk_photo` | File | Not used; photos are notes (see above) |
 
 ## Relationships (summary)
 
 ```
 stk_xbsimport 1─* stk_xbsline *─1 stk_site
-stk_xbsimport 1─* stk_stocktake *─* stk_site          (N:N stk_stocktake_site)
-stk_stocktake 1─* stk_assignment *─1 systemuser
+stk_xbsimport 1─* stk_stocktake *─* stk_site                 (N:N stk_stocktake_site, unused yet)
+stk_stocktake 1─* stk_assignment *─1 systemuser (counter)
 stk_stocktake 1─* stk_countsheet 1─* stk_stack 1─* stk_countline *─0..1 stk_xbsline
 stk_countline *─1 stk_packtype
+stk_countline *─0..1 stk_recount
 stk_stocktake 1─* stk_variance 1─* stk_recount
-stk_variance  1─* stk_exception
+stk_variance  1─* stk_exception *─0..1 stk_xbsimport
 stk_stocktake 1─* stk_signoff
-stk_mappingchange 1─* stk_basketmap / stk_outturnmap   (last change)
+stk_mappingchange 1─* stk_basketmap / stk_outturnmap          (last change)
+stk_countline, stk_issue 1─* annotation (photos)
 ```
 
 Delete behaviour: **Restrict** everywhere (nothing cascades). Records are
 closed/superseded, not deleted.
 
-## Security roles (detail in Step 3)
+## Security roles
 
 | Role | Key rights |
 |---|---|
-| **STK Counter** | Read reference + XBS (Org). Create/Write own count sheets, stacks, count lines, problem reports (User). Read/Write own recounts. |
+| **STK Counter** | Read reference + XBS lines (Org) and assignments. Create/Write stacks; own count sheets, count lines, problem reports and their photo notes (User); read all count lines (duplicate warnings). Read/Write own recounts. No variances. |
 | **STK Operations Admin** | Stock takes, assignments, sheet decisions, variances, exceptions (Org). Request mapping changes. Sign Operations gate. |
 | **STK Warehouse Manager** | Sheet decisions, variances (Org). Sign Warehouse gate. |
 | **STK Trading** | Direct purchases, exceptions, mapping requests. Sign Trading gate. |
 | **STK Finance** | Decide mapping changes, variances. Sign Finance gate. |
 | **STK IT Admin** | Sites, pack types, settings, users. |
-| **STK Importer** | **Create only** on `stk_xbsline`, `stk_comtrasposition`; Create + Write on `stk_xbsimport`. Given to Ops Admin and IT Admin. |
+| **STK Importer** | **Create only** on `stk_xbsline`, `stk_comtrasposition`; Create + Write on `stk_xbsimport`. Given with Ops Admin and IT Admin. |
 
 No role has Write or Delete on `stk_xbsline` or `stk_comtrasposition`.
-**Caveat:** System Administrators bypass roles. While we test with an admin
-account the lock is also enforced in the apps; demonstrating the role lock
-itself needs one non-admin test user.
+Full privilege matrix: [security-roles.md](security-roles.md).
+**Caveat:** System Administrators bypass roles. The lock is also enforced in the
+apps; proving the role lock itself needs a non-admin test user (Stage 5).
 
-## Open points to confirm
+## Flows that write to these tables
 
-1. Approval unit: per **count sheet** (as in the current NKG app) with stacks
-   inside it — or per stack only? Draft keeps both.
-2. Should old imports be kept forever, or purged after N months?
-3. Comtras extract: sample until a real file is shared.
-4. 100% zero-out counts (issuing → receiving team) are not modelled yet; they'd
-   add a receiving-side count line. Proposed for a later step.
+| Flow | Trigger | Writes |
+|---|---|---|
+| F1 | `stk_xbsimport` → Imported | `stk_exception` (one per warning check) |
+| F4 | Weekdays 07:00 EAT | `stk_exception.stk_status`, `stk_escalationlevel` |
+| F5 | `stk_signoff` created | `stk_stocktake.stk_status` → Completed; deletes a Finance sign-off made by the preparer (separation of duties on) |
+| F6 | `stk_mappingchange` created | `stk_mappingchange.stk_state`, `stk_basketmap` / `stk_outturnmap` |
+
+F2, F3a, F3b, F7a–c and F8 only read and notify (Teams / email). Flow
+definitions: `scripts/dataverse/flows.mjs`.
+
+## Open points
+
+1. **Stock take ↔ warehouse (N:N):** not written yet; every stock take covers
+   all warehouses.
+2. **Assignments:** no Hub screen yet; created in Dataverse.
+3. **Comtras:** table empty until a real extract is shared.
+4. **Basket mapping:** Minus / Natural fix waiting for Trade & QC's document.
+5. **100% zero-out counts** (issuing → receiving team) are not modelled; they
+   would add a receiving-side count line.
+6. **Retention:** keep old imports forever, or purge after N months?

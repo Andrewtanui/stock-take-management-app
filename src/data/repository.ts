@@ -304,6 +304,8 @@ export function outturnMap() {
 let PHYS_DELTA: Record<string, number> = {};
 /** Comtras differences by secondary basket (Comtras − XBS, bags): samples until the Comtras extract is connected. */
 let COMTRAS_DELTA: Record<string, number> = {};
+/** Comtras minus XBS per secondary basket; empty until a Comtras extract is loaded. */
+export const comtrasDelta = () => COMTRAS_DELTA;
 
 export interface ReconRow {
   key: string;

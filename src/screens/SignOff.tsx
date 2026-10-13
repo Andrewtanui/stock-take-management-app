@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { Check, Download, Mail, ShieldAlert } from "lucide-react";
-import { CHAIN, TARGET_PCT, TODAY, reconciliation, sum, warehouseSummary } from "../data/repository";
+import { byWarehouse, netVariance } from "../data/recon";
+import { CHAIN, TARGET_PCT, TODAY, sum } from "../data/repository";
 import { PEOPLE, PREPARER, useStore } from "../data/store";
 import { Chip, Diff, PageHead, n, signed } from "../ui/kit";
 
 export default function SignOff() {
   const store = useStore();
-  const rows = warehouseSummary();
-  const rec = reconciliation(store.baskets).primary;
-  const xbs = sum(rec, (r) => r.xbs);
-  const phys = sum(rec, (r) => r.physical);
-  const net = ((phys - xbs) / xbs) * 100;
+  // Counted stock only: warehouses not counted show as such, never as matching XBS.
+  const reconInput = { counts: store.counts, stacks: store.stacks, baskets: store.baskets };
+  const rows = byWarehouse(reconInput);
+  const rec = netVariance(reconInput);
+  const net = rec.pct;
   const [comment, setComment] = useState("");
   const [ack, setAck] = useState(false);
 
@@ -67,8 +68,8 @@ export default function SignOff() {
           <h2 className="h3">Stock sign-off, by warehouse</h2>
           <span>
             Net variance{" "}
-            <Chip tone={Math.abs(net) <= TARGET_PCT ? "ok" : "crit"}>
-              {signed(net, 2)}% · target ±{TARGET_PCT}%
+            <Chip tone={!rec.counted ? "neutral" : Math.abs(net) <= TARGET_PCT ? "ok" : "crit"}>
+              {rec.counted ? `${signed(net, 2)}% · target ±${TARGET_PCT}% · ${Math.round(rec.cover * 100)}% of XBS counted` : "nothing counted yet"}
             </Chip>
           </span>
         </div>
@@ -77,41 +78,43 @@ export default function SignOff() {
             <thead>
               <tr>
                 <th>Warehouse</th>
+                <th>Status</th>
                 <th className="num">Physical units</th>
                 <th className="num">System units</th>
                 <th className="num">Variance units</th>
-                <th className="num">Physical 60 kg bags</th>
-                <th className="num">System 60 kg bags</th>
-                <th className="num">Variance 60 kg bags</th>
+                <th className="num">Physical 60 kg</th>
+                <th className="num">System 60 kg</th>
+                <th className="num">Variance 60 kg</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.site.code}>
-                  <td>{r.site.name}</td>
-                  <td className="num">{n(r.physUnits)}</td>
-                  <td className="num">{n(r.sysUnits)}</td>
-                  <td className="num">
-                    <Diff value={r.physUnits - r.sysUnits} />
-                  </td>
-                  <td className="num">{n(r.phys60, 1)}</td>
-                  <td className="num">{n(r.sys60, 1)}</td>
-                  <td className="num">
-                    <Diff value={Math.round((r.phys60 - r.sys60) * 10) / 10} />
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const counted = r.status !== "Not counted";
+                return (
+                  <tr key={r.site.code}>
+                    <td>{r.site.name}</td>
+                    <td className="muted">{r.status === "Partly counted" ? `Partly counted · ${Math.round(r.cover * 100)}%` : r.status}</td>
+                    <td className="num">{counted ? n(r.physUnits) : "—"}</td>
+                    <td className="num">{counted ? n(r.xbsUnits) : "—"}</td>
+                    <td className="num">{counted ? <Diff value={r.physUnits - r.xbsUnits} /> : "—"}</td>
+                    <td className="num">{counted ? n(r.physical, 1) : "—"}</td>
+                    <td className="num">{counted ? n(r.xbs, 1) : "—"}</td>
+                    <td className="num">{counted ? <Diff value={r.physical - r.xbs} d={1} /> : "—"}</td>
+                  </tr>
+                );
+              })}
               <tr className="total">
-                <td>Total</td>
+                <td>Total counted</td>
+                <td />
                 <td className="num">{n(sum(rows, (r) => r.physUnits))}</td>
-                <td className="num">{n(sum(rows, (r) => r.sysUnits))}</td>
+                <td className="num">{n(sum(rows, (r) => r.xbsUnits))}</td>
                 <td className="num">
-                  <Diff value={sum(rows, (r) => r.physUnits - r.sysUnits)} />
+                  <Diff value={sum(rows, (r) => r.physUnits - r.xbsUnits)} />
                 </td>
-                <td className="num">{n(sum(rows, (r) => r.phys60), 1)}</td>
-                <td className="num">{n(sum(rows, (r) => r.sys60), 1)}</td>
+                <td className="num">{n(sum(rows, (r) => r.physical), 1)}</td>
+                <td className="num">{n(sum(rows, (r) => r.xbs), 1)}</td>
                 <td className="num">
-                  <Diff value={Math.round(sum(rows, (r) => r.phys60 - r.sys60) * 10) / 10} />
+                  <Diff value={sum(rows, (r) => r.physical - r.xbs)} d={1} />
                 </td>
               </tr>
             </tbody>

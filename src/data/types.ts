@@ -152,6 +152,9 @@ export interface Variance {
   grade: string;
   expected: number;
   counted: number;
+  /** Weights, when known; a lot can match on units and still differ in kg. */
+  expectedKg?: number;
+  countedKg?: number;
   cause: RootCause;
   why: string;
   counter: string;

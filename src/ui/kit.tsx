@@ -49,8 +49,9 @@ export function Stat({ label, value, note, tone }: { label: string; value: React
 }
 
 /** Difference cell: red for short, orange for over, plain for zero. */
-export function Diff({ value }: { value: number }) {
-  return <span className={"diff " + (value < 0 ? "diff-short" : value > 0 ? "diff-over" : "")}>{signed(value)}</span>;
+export function Diff({ value, d = 0 }: { value: number; d?: number }) {
+  const v = Math.abs(value) < 0.5 * 10 ** -d ? 0 : value; // rounding noise shows as 0, not −0.0
+  return <span className={"diff " + (v < 0 ? "diff-short" : v > 0 ? "diff-over" : "")}>{signed(v, d)}</span>;
 }
 
 export function Tabs<T extends string>({ value, onChange, items }: { value: T; onChange: (v: T) => void; items: [T, string, number?][] }) {

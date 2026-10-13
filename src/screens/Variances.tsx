@@ -82,6 +82,12 @@ export default function Variances() {
                     <Code>{v.outturn}</Code>
                     <strong>
                       <Diff value={v.counted - v.expected} /> units
+                      {kgDiff(v) !== undefined && (
+                        <>
+                          {" · "}
+                          <Diff value={kgDiff(v)!} d={1} /> kg
+                        </>
+                      )}
                     </strong>
                   </span>
                   <span className="muted small">
@@ -149,6 +155,11 @@ function Detail({ v, allowed, onBack }: { v: Variance; allowed: boolean; onBack:
           </div>
         </div>
       </div>
+      {v.expectedKg !== undefined && v.countedKg !== undefined && (
+        <p className="muted small">
+          Weight: XBS {n(v.expectedKg, 1)} kg · counted {n(v.countedKg, 1)} kg · difference <Diff value={kgDiff(v)!} d={1} /> kg
+        </p>
+      )}
 
       <div className="assist">
         <div className="assist-head">
@@ -237,3 +248,6 @@ function Detail({ v, allowed, onBack }: { v: Variance; allowed: boolean; onBack:
     </article>
   );
 }
+
+/** Counted minus XBS in kg, when both weights are known. */
+const kgDiff = (v: Variance) => (v.expectedKg === undefined || v.countedKg === undefined ? undefined : v.countedKg - v.expectedKg);

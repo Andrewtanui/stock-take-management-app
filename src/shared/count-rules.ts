@@ -27,8 +27,11 @@ export interface PackRule {
   gradePattern?: string;
 }
 
-/** Weight difference below which a count still "matches" XBS. */
-export const MATCH_TOLERANCE_KG = 0.05;
+/**
+ * Weight difference below which a count still "matches" XBS. Pockets are
+ * weighed to the whole kilo on the floor, while XBS keeps them to 0.1 kg.
+ */
+export const MATCH_TOLERANCE_KG = 1;
 
 export const hasPocket = (q: Qty) => q.pocketKg > 0;
 export const unitsOf = (q: Qty) => q.bags + (hasPocket(q) ? 1 : 0);
