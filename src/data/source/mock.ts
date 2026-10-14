@@ -280,7 +280,9 @@ const COUNTED: Partial<Record<SiteCode, number>> = { IBR: 40460, AGL: 15960, KPC
  * as XBS holds them, except the scripted differences in PHYS_DELTA.
  */
 function demoCounts(): { counts: CountRow[]; stacks: StackInfo[] } {
-  const names = ["Peter M.", "Mary W.", "Joseph O.", "Samuel K."];
+  // Each line belongs to the sheet of the counter for that row (Count approval lists them).
+  const sheetFor = (site: SiteCode, stack: string, i: number) =>
+    site === "AGL" ? "CS-108" : stack[0] === "C" ? "CS-104" : stack[0] === "D" ? "CS-106" : i % 2 ? "CS-102" : "CS-101";
   const lots = new Map<string, CountRow>();
   const applied = new Set<string>();
   for (const l of lines) {
@@ -291,8 +293,10 @@ function demoCounts(): { counts: CountRow[]; stacks: StackInfo[] } {
     const k = `${l.wh}|${stack}|${l.b}`;
     const row = lots.get(k) ?? {
       site: l.wh, stack, batch: l.b, outturn: l.o, grade: l.i, bags: 0, pocketKg: 0, units: 0, kg: 0,
-      by: names[lots.size % names.length], countedOn: "2026-03-02T08:30:00Z", found: false, other: false, recount: false,
+      by: "", countedOn: "2026-03-02T08:30:00Z", found: false, other: false, recount: false,
+      sheet: sheetFor(l.wh, stack, lots.size),
     };
+    row.by = SHEETS.find((x) => x.id === row.sheet)?.counter ?? "Peter M.";
     row.bags += l.bg;
     row.pocketKg = Math.max(row.pocketKg, l.pk);
     row.units += l.u;
@@ -317,6 +321,7 @@ function demoCounts(): { counts: CountRow[]; stacks: StackInfo[] } {
 }
 
 const ok = () => Promise.resolve();
+let recountN = 0;
 let importN = 0;
 
 export const mockSource: DataSource = {
@@ -358,6 +363,7 @@ export const mockSource: DataSource = {
   },
   decideSheet: ok,
   decideVariance: ok,
+  recountLine: async () => `R-${String(100 + ++recountN)}`,
   addException: ok,
   updateException: ok,
   requestMapping: ok,

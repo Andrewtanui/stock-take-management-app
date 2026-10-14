@@ -131,6 +131,7 @@ const ids = {
   sheet: new Map<string, string>(), // name → id
   sheetStacks: new Map<string, string[]>(), // sheet id → stack ids
   variance: new Map<string, { id: string; stackId?: string; outturn: string; batch: string; counterId?: string; lineId?: string; siteId?: string }>(),
+  line: new Map<string, { stackId?: string; outturn: string; batch: string; counterId?: string }>(), // count line id -> what a recount needs
   exception: new Map<string, string>(), // EX-### → id
   issue: new Map<string, string>(), // C-### → id
   change: new Map<string, { id: string; by?: string }>(), // MC-### → id + requester
@@ -304,8 +305,8 @@ async function load(): Promise<MgmtData> {
   const [sheetRows, assignmentRows, stackRows, recountRows] = await Promise.all([
     all((o) => Stk_countsheetsService.getAll(o), { select: ["stk_countsheetid", "stk_name", "stk_status", "stk_submittedon", "stk_countercomment", "stk_decisioncomment", "stk_linecount", "stk_variancecount", "stk_bags", "_stk_site_value", "_stk_assignment_value", "_stk_stocktake_value", "_createdby_value"] }, "read count sheets"),
     all((o) => Stk_assignmentsService.getAll(o), { select: ["stk_assignmentid", "stk_rows", "_stk_site_value", "_stk_counter_value", "_stk_stocktake_value"], filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read assignments"),
-    all((o) => Stk_stacksService.getAll(o), { select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status"], filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read stacks"),
-    all((o) => Stk_recountsService.getAll(o), { select: ["stk_recountid", "_ownerid_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read recounts"),
+    all((o) => Stk_stacksService.getAll(o), { select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value"], filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read stacks"),
+    all((o) => Stk_recountsService.getAll(o), { select: ["stk_recountid", "stk_name", "stk_batch", "stk_status", "_stk_stack_value", "_ownerid_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read recounts"),
   ]);
   const activeSheets = sheetRows.filter((r) => r._stk_stocktake_value === active.stk_stocktakeid);
   const countRows = (
@@ -489,8 +490,19 @@ async function load(): Promise<MgmtData> {
     const rows = (a?.stk_rows ?? "").split(",").map((x) => x.trim()).filter(Boolean);
     return rows.length ? `Rows ${rows.join("–")}` : "Whole site";
   };
+  // Variances still waiting for a decision, by the sheet whose stacks or lines they are on.
+  // (The phone can't count them - counting is blind - so the sheet's stored total isn't used.)
+  const undecided = new Set([code(Stk_variancesstk_state, "Open"), code(Stk_variancesstk_state, "Recount sent")]);
   const sheets: CountSheet[] = activeSheets.map((r) => {
     const mine = countRows.filter((c) => c._stk_countsheet_value === r.stk_countsheetid);
+    const lineIds = new Set(mine.map((c) => c.stk_countlineid));
+    const stackIds = new Set([
+      ...stackRows.filter((st) => st._stk_countsheet_value === r.stk_countsheetid).map((st) => st.stk_stackid),
+      ...(ids.sheetStacks.get(r.stk_countsheetid) ?? []),
+    ]);
+    const open = varianceRows.filter(
+      (v) => undecided.has(v.stk_state!) && ((v._stk_countline_value && lineIds.has(v._stk_countline_value)) || (v._stk_stack_value && stackIds.has(v._stk_stack_value))),
+    ).length;
     return {
       id: r.stk_name,
       counter: nm(r._createdby_value),
@@ -498,7 +510,7 @@ async function load(): Promise<MgmtData> {
       area: areaOf(assignment.get(r._stk_assignment_value!)),
       status: SHEET_STATUS[label(Stk_countsheetsstk_status, r.stk_status) ?? "In progress"] ?? "In progress",
       lots: r.stk_linecount ?? mine.length,
-      variances: r.stk_variancecount ?? mine.filter((c) => c.stk_reason != null || c.stk_isfound).length,
+      variances: open,
       bags: r.stk_bags ?? mine.reduce((a, c) => a + (c.stk_bags ?? 0), 0),
       submittedAt: r.stk_submittedon ? stamp(r.stk_submittedon) : undefined,
       comment: r.stk_decisioncomment ?? r.stk_countercomment ?? undefined,
@@ -671,9 +683,19 @@ async function load(): Promise<MgmtData> {
 
   /* reports and approvals: the raw count lines and stack statuses */
   const sheetName = new Map(activeSheets.map((r) => [r.stk_countsheetid, r.stk_name]));
+  // Open recounts by stack + batch + counter, so a line shows "recount asked" until it is redone.
+  const openRecount = code(Stk_recountsstk_status, "Open");
+  const recountOf = new Map(
+    (recountRows as unknown as { stk_name: string; stk_batch?: string; stk_status?: number; _stk_stack_value?: string; _ownerid_value?: string }[])
+      .filter((r) => r.stk_status === openRecount)
+      .map((r) => [`${r._stk_stack_value}|${r.stk_batch ?? ""}|${r._ownerid_value}`, r.stk_name]),
+  );
   const counts: CountRow[] = countRows.map((c) => {
     const x = c as typeof c & { stk_pocketkg?: number; stk_category?: number; _stk_recount_value?: string };
+    ids.line.set(c.stk_countlineid, { stackId: c._stk_stack_value, outturn: c.stk_outturn ?? "", batch: c.stk_batch ?? "", counterId: c._createdby_value });
     return {
+      id: c.stk_countlineid,
+      recountOpen: recountOf.get(`${c._stk_stack_value}|${c.stk_batch ?? ""}|${c._createdby_value}`),
       site: siteCode.get(c._stk_site_value!)!,
       stack: stackOf.get(c._stk_stack_value!)?.name ?? "",
       batch: c.stk_batch ?? "",
@@ -892,6 +914,34 @@ async function decideVariance(name: string, state: Variance["state"], cause: Roo
       "send the recount",
     );
   }
+}
+
+/** A supervisor asks for a blind recount of one line, without sending the whole sheet back. */
+async function recountLine(line: CountRow, note: string) {
+  const l = line.id ? ids.line.get(line.id) : undefined;
+  if (!l?.stackId) throw new Error(`${line.outturn || "this line"} at ${line.stack} can't be recounted: it has no saved stack`);
+  const existing = await all((o) => Stk_recountsService.getAll(o), { select: ["stk_name"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` }, "number the recount");
+  const name = `R-${String(existing.reduce((m, r) => Math.max(m, Number(r.stk_name.replace(/\D/g, "")) || 0), 0) + 1).padStart(3, "0")}`;
+  // Link the lot's variance if there is one, so the decision trail stays together.
+  const variance = [...ids.variance.values()].find((v) => v.stackId === l.stackId && v.batch === l.batch);
+  unwrap(
+    await Stk_recountsService.create({
+      stk_name: name,
+      statecode: 0,
+      stk_outturn: l.outturn,
+      stk_batch: l.batch,
+      // Shown to the counter: never an XBS figure or the earlier count.
+      stk_why: `${note.trim() ? `${note.trim()} ` : ""}Count ${l.outturn} again from the bottom tier up. The earlier figure is hidden on purpose.`.slice(0, 2000),
+      stk_status: code(Stk_recountsstk_status, "Open"),
+      "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+      "stk_stack@odata.bind": bind("stk_stacks", l.stackId),
+      ...(variance ? { "stk_variance@odata.bind": bind("stk_variances", variance.id) } : {}),
+      // The counter who made the line, so it lands on their phone and replaces their line.
+      ...(l.counterId ? { "ownerid@odata.bind": bind("systemusers", l.counterId) } : {}),
+    } as never),
+    "send the recount",
+  );
+  return name;
 }
 
 const KIND_FALLBACK = "Not yet known";
@@ -1307,6 +1357,7 @@ export const dataverseSource: DataSource = {
   importXbs,
   decideSheet,
   decideVariance,
+  recountLine,
   addException,
   updateException,
   requestMapping,

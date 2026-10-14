@@ -15,7 +15,9 @@ const cfg = { teamId: arg("team"), channelId: arg("channel") };
 const conn = { dataverse: arg("dataverse"), teams: arg("teams"), approvals: arg("approvals"), outlook: arg("outlook") };
 if (!cfg.teamId || !cfg.channelId) throw new Error("--team and --channel are required (from the Teams channel link)");
 
-const esc = (s) => s.replace(/'/g, "''");
+// OData quote-escape, then URL-encode: a raw "+" in a query string reads as a space,
+// so "exceptions + Operations" never matched and F1 was re-created on every run.
+const esc = (s) => encodeURIComponent(s.replace(/'/g, "''"));
 
 async function ensureReference(key, ref) {
   const found = (await dv("GET", `connectionreferences?$select=connectionreferenceid,connectionid&$filter=connectionreferencelogicalname eq '${ref.logicalName}'`)).value[0];

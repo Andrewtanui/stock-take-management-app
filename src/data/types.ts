@@ -81,6 +81,8 @@ export interface ImportCheck {
 export type SheetStatus = "In progress" | "Submitted" | "Approved" | "Rejected";
 /** One physical count line, as the reports read it. */
 export interface CountRow {
+  /** Dataverse count line id (absent in the demo data). */
+  id?: string;
   site: SiteCode;
   stack: string;
   batch: string;
@@ -104,6 +106,8 @@ export interface CountRow {
   sheet?: string;
   /** Dataverse Note id of the photo of the tag, if one was taken. */
   photo?: string;
+  /** An open blind recount of this line (its R-### name), if one was asked for. */
+  recountOpen?: string;
 }
 
 /** A stack on the active stock take and where it is in the approval flow. */

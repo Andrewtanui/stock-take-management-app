@@ -101,6 +101,8 @@ export interface DataSource {
   importXbs(upload: XbsUploadToSave, onProgress?: (done: number, total: number) => void): Promise<string>;
   decideSheet(id: string, status: SheetStatus, comment: string): Promise<void>;
   decideVariance(id: string, state: Variance["state"], cause: RootCause): Promise<void>;
+  /** Asks the line's counter for a blind recount of that one outturn; returns the recount's name. */
+  recountLine(line: CountRow, note: string): Promise<string>;
   addException(e: Exception): Promise<void>;
   updateException(id: string, patch: Partial<Exception>): Promise<void>;
   requestMapping(c: MappingChange): Promise<void>;

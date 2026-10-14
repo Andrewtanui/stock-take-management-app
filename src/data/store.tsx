@@ -10,6 +10,7 @@ import { getSource, type DataSource, type MgmtData, type Signature, type XbsUplo
 import type {
   AuditEntry,
   BasketMap,
+  CountRow,
   DirectPurchase,
   Exception,
   Issue,
@@ -24,6 +25,9 @@ import type {
   Variance,
 } from "./types";
 import { LoadError, Splash } from "../ui/Splash";
+
+/** A count line's identity: its Dataverse id, or where and by whom in the demo data. */
+const lineKeyOf = (l: CountRow) => l.id ?? `${l.site}|${l.stack}|${l.batch}|${l.by}`;
 
 /** Demo identities for each role. */
 export const PEOPLE: Record<Role, string> = {
@@ -59,6 +63,8 @@ function useStoreState(source: DataSource, data: MgmtData) {
   const [directPurchases, setDirectPurchases] = useState<DirectPurchase[]>(data.reference.directPurchases);
   // Count lines and stacks are read-only here; they change in the counter app.
   const counts = data.counts ?? [];
+  // Recounts asked from Count approval this session, by line (shown until the page reloads with them).
+  const [lineRecounts, setLineRecounts] = useState<Record<string, string>>({});
   const stacks = data.stacks ?? [];
   const [signatures, setSignatures] = useState<Partial<Record<Role, Signature>>>(data.signatures ?? {});
 
@@ -132,6 +138,30 @@ function useStoreState(source: DataSource, data: MgmtData) {
       log("Count Sheets", id, `${status}${comment ? `: ${comment}` : ""}`);
       flash(
         status === "Approved" ? `${id} approved.` : status === "Submitted" ? `${id} recount received. Ready to approve.` : `${id} sent back to the counter.`,
+      );
+    },
+
+    /** The open recount for a line: from Dataverse, or asked a moment ago. */
+    lineRecount(line: CountRow) {
+      return lineRecounts[lineKeyOf(line)] ?? line.recountOpen;
+    },
+    /** Blind recount of one outturn on one stack, without sending the whole sheet back. */
+    recountLine(line: CountRow, note: string) {
+      const k = lineKeyOf(line);
+      setLineRecounts((m) => ({ ...m, [k]: "sending" }));
+      source.recountLine(line, note).then(
+        (name) => {
+          setLineRecounts((m) => ({ ...m, [k]: name }));
+          log("Recounts", name, `${line.outturn} at ${line.stack}, asked of ${line.by}${note.trim() ? `: ${note.trim()}` : ""}`);
+          flash(`${name} sent to ${line.by}: recount ${line.outturn} at ${line.stack}.`);
+        },
+        (e: unknown) => {
+          setLineRecounts((m) => {
+            const { [k]: _gone, ...rest } = m;
+            return rest;
+          });
+          flash(`Couldn't send the recount. ${e instanceof Error ? e.message : ""}`.trim());
+        },
       );
     },
 
