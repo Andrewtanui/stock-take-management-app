@@ -1,5 +1,6 @@
-// Security roles for IBKY Stock Take. Only stk_ table privileges live here —
-// every user also gets the built-in "Basic User" role for platform basics.
+// Security roles for IBKY Stock Take. stk_ table privileges, plus a few platform
+// privileges in `misc` (organisation-wide). Every user also gets the built-in
+// "Basic User" role for platform basics (e.g. reading user records).
 //
 // Rights per table: C create · R read · W write · D delete · A assign · S share · P append.
 // Append / AppendTo are derived: Append with C or W, AppendTo with R.
@@ -52,6 +53,7 @@ export const ROLES = [
   },
   {
     name: "STK Operations Admin",
+    misc: ["ReadRecordAuditHistory", "ReadAuditSummary"], // Set-up › Audit log reads Dataverse audit history across the stk_ tables
     about: "Runs the stock take: set-up, assignments, approvals, variances, exceptions; signs the Operations gate.",
     tables: {
       ...READ_ALL_MGMT,
@@ -70,6 +72,7 @@ export const ROLES = [
   },
   {
     name: "STK Warehouse Manager",
+    misc: ["ReadRecordAuditHistory", "ReadAuditSummary"], // Set-up › Audit log reads Dataverse audit history across the stk_ tables
     about: "Approves count sheets, decides variances; signs the Warehouse gate.",
     tables: {
       ...READ_ALL_MGMT,
@@ -83,6 +86,7 @@ export const ROLES = [
   },
   {
     name: "STK Trading",
+    misc: ["ReadRecordAuditHistory", "ReadAuditSummary"], // Set-up › Audit log reads Dataverse audit history across the stk_ tables
     about: "Direct purchases, contract exceptions, mapping requests; signs the Trading gate.",
     tables: {
       ...READ_ALL_MGMT,
@@ -94,6 +98,7 @@ export const ROLES = [
   },
   {
     name: "STK Finance",
+    misc: ["ReadRecordAuditHistory", "ReadAuditSummary"], // Set-up › Audit log reads Dataverse audit history across the stk_ tables
     about: "Decides mapping changes and variances, prepares and certifies the position; signs the Finance gate.",
     tables: {
       ...READ_ALL_MGMT,
@@ -108,6 +113,7 @@ export const ROLES = [
   },
   {
     name: "STK IT Admin",
+    misc: ["ReadRecordAuditHistory", "ReadAuditSummary"], // Set-up › Audit log reads Dataverse audit history across the stk_ tables
     about: "Warehouses, packing types, settings and problem-report triage.",
     tables: {
       ...READ_ALL_MGMT,

@@ -226,9 +226,9 @@ export function checks(): Check[] {
     {
       id: "stuffed", severity: "high", owner: "Logistics",
       title: "Stuffed but still in stock",
-      detail: "Contracts show stuffing on 28 Feb, but the lots haven't been posted out of XBS. Counters will find nothing at A-01-1.",
+      detail: "The shipment tracker shows these contracts as stuffed, but the lots haven't been posted out of XBS. Counters will find nothing where XBS has them.",
       count: new Set(stuffed.map((l) => l.so)).size, bags: sum(stuffed, (l) => l.bg), unit: "contracts",
-      rows: mk(stuffed, (l) => `Contract ${l.so} · stuffed 28 Feb`, (l) => l.o),
+      rows: mk(stuffed, (l) => `Contract ${l.so} · stuffed`, (l) => l.o),
     },
     {
       id: "cancelled", severity: "high", owner: "Trading",
@@ -240,7 +240,7 @@ export function checks(): Check[] {
     {
       id: "shipped", severity: "high", owner: "Trading",
       title: "Stock blocked to a shipped contract",
-      detail: "Contract 3786965 sailed on 8 Nov 2025 and its documents are dispatched. These lots should no longer be on the books.",
+      detail: "These contracts have sailed and their documents are dispatched, yet lots are still blocked to them. They should no longer be on the books.",
       count: shipped.length, bags: sum(shipped, (l) => l.bg), unit: "lots",
       rows: mk(shipped, (l) => `Contract ${l.so} · ${l.d} days`),
     },

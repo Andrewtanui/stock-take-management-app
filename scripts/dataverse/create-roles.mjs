@@ -110,6 +110,12 @@ for (const r of ROLES) {
     BusinessUnitId: bu.businessunitid,
     Depth: DEPTH[p.depth],
   }));
+  // Platform privileges (e.g. View Audit History), organisation-wide.
+  for (const m of r.misc ?? []) {
+    const found = (await dv("GET", `privileges?$select=privilegeid&$filter=name eq 'prv${m}'`)).value[0];
+    if (!found) throw new Error(`No privilege prv${m}`);
+    Privileges.push({ "@odata.type": "Microsoft.Dynamics.CRM.RolePrivilege", PrivilegeId: found.privilegeid, BusinessUnitId: bu.businessunitid, Depth: "Global" });
+  }
   await dv("POST", `roles(${role.roleid})/Microsoft.Dynamics.CRM.ReplacePrivilegesRole`, { Privileges });
   await dv("POST", "AddSolutionComponent", { ComponentId: role.roleid, ComponentType: 20, SolutionUniqueName: SOL, AddRequiredComponents: false });
   process.stdout.write(`${Privileges.length} privileges set`);

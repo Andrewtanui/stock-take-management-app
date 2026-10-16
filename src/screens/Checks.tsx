@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, UserRound } from "lucide-react";
-import { checks } from "../data/repository";
+import { IMPORTS, checks } from "../data/repository";
 import { useStore } from "../data/store";
 import type { Dept } from "../data/types";
 import { Chip, Code, PageHead, n } from "../ui/kit";
@@ -25,6 +25,9 @@ const SEV = {
 export default function Checks() {
   const store = useStore();
   const list = checks();
+  // The checks run on the active stock take's XBS import; name it and its snapshot time.
+  const st = store.stockTakes.find((s) => s.status !== "Completed") ?? store.stockTakes[0];
+  const imp = IMPORTS.find((i) => i.id === st?.importId) ?? IMPORTS.find((i) => i.status === "Imported");
   const [open, setOpen] = useState<string | null>(list[0].id);
   const [assigned, setAssigned] = useState<Record<string, boolean>>({});
 
@@ -32,7 +35,7 @@ export default function Checks() {
     <div className="page">
       <PageHead
         title="Pre-count checks"
-        sub="Problems found in the XBS import of 2 Mar 2026, 08:52. Each would otherwise show up as a variance on count day. Run these as soon as the import lands."
+        sub={`Problems found in ${imp ? `the XBS import of ${imp.at} (${imp.id})` : "the latest XBS import"}. Each would otherwise show up as a variance on count day. Run these as soon as the import lands.`}
       />
 
       <div className="check-summary">

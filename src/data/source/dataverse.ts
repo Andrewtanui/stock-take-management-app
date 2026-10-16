@@ -1033,16 +1033,23 @@ const SKIP_FIELDS = new Set(["owningbusinessunit", "statuscode", "statecode", "m
 /** Readable change lines from audit rows; newest first, last 150. */
 async function readAudit(nameOf: Map<string, string>): Promise<AuditEntry[]> {
   const tables = Object.keys(TABLE_LABEL);
-  const rows = await all(
-    (o) => AuditsService.getAll(o),
-    {
-      select: ["createdon", "action", "objecttypecode", "_objectid_value", "_userid_value", "changedata"] as never,
-      filter: tables.map((t) => `objecttypecode eq '${t}'`).join(" or "),
-      orderBy: ["createdon desc"],
-      top: 150,
-    },
-    "read the audit history",
-  );
+  let rows;
+  try {
+    rows = await all(
+      (o) => AuditsService.getAll(o),
+      {
+        select: ["createdon", "action", "objecttypecode", "_objectid_value", "_userid_value", "changedata"] as never,
+        filter: tables.map((t) => `objecttypecode eq '${t}'`).join(" or "),
+        orderBy: ["createdon desc"],
+        top: 150,
+      },
+      "read the audit history",
+    );
+  } catch (e) {
+    // Reading audit history needs "View Audit History"; without it the rest of the Hub still opens.
+    if (!/PrivilegeDenied|missing prv\w+ privilege/i.test(String((e as Error)?.message ?? e))) throw e;
+    return [{ at: "", by: "", list: "Audit log", item: "", change: "Your account can't read the audit history yet: it needs the View Audit History permission (part of the STK management roles). Ask your administrator." }];
+  }
   type Row = { createdon?: string; action?: number; objecttypecode?: string; _objectid_value?: string; _userid_value?: string; changedata?: string };
   const list = rows as unknown as Row[];
   const who = await names(list.map((r) => r._userid_value));

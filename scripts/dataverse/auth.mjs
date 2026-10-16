@@ -44,7 +44,8 @@ function openBrowser(url) {
 }
 
 export async function getToken() {
-  const accounts = await pca.getTokenCache().getAllAccounts();
+  // The cache can hold sign-ins for several tenants (Pathways dev, NKG): use this tenant's.
+  const accounts = (await pca.getTokenCache().getAllAccounts()).filter((a) => a.tenantId === TENANT);
   if (accounts.length) {
     try {
       return (await pca.acquireTokenSilent({ account: accounts[0], scopes })).accessToken;
