@@ -444,6 +444,38 @@ the problem".
 | `stk_resolution` | Multiline 2000 | Reply shown to the counter |
 | `stk_photo` | File | Not used; photos are notes (see above) |
 
+### 21. `stk_counterprofile` — Counter profile (added 18 Oct 2026)
+One per person who counts. Used by the random counter allocation.
+
+| Column | Type | Notes |
+|---|---|---|
+| `stk_name` PK | Text 100 | Person's name |
+| `stk_user` AK | Lookup → systemuser | One profile per person |
+| `stk_homesite` | Lookup → stk_site | Where they normally work |
+| `stk_homerows` | Text 40 | "D,E" - never allocated to them (no counting your own stock) |
+| `stk_thirdpartyok` | Yes/No | May be sent to third-party sites |
+| `stk_active` | Yes/No | Takes part in allocation |
+| `stk_notes` | Multiline 2000 | |
+
+### 22. `stk_allocationrun` — Allocation run (added 18 Oct 2026)
+Audit record of one random allocation of counters to areas.
+
+| Column | Type | Notes |
+|---|---|---|
+| `stk_name` PK | Text 30 | `AR-001` |
+| `stk_stocktake` | Lookup | |
+| `stk_status` | Choice: Draft · Published · Superseded | |
+| `stk_seed` | Whole number | Random seed - the plan can be reproduced |
+| `stk_present` | Multiline 4000 | JSON: counters present |
+| `stk_plan` | Multiline 100k | JSON: counter → areas, bags |
+| `stk_swaps` | Multiline 4000 | JSON: supervisor swaps / rebalances, who and when |
+| `stk_rules` | Multiline 1000 | JSON: rules applied (from setting `AllocationRules`) |
+| `stk_spreadpct` | Decimal (2) | Workload spread between busiest and lightest counter |
+| `stk_ranby` / `stk_publishedby` / `stk_publishedon` | Lookups / Date & time | |
+
+`stk_assignment` gained `stk_sections` (Text 400, e.g. `D1-7,D8-14,C/D`; empty = use `stk_rows`),
+`stk_plannedbags` (Whole number) and `stk_allocationrun` (Lookup).
+
 ## Relationships (summary)
 
 ```

@@ -255,6 +255,26 @@
           "x-ms-dataverse-attribute-of": "statuscode",
           "x-ms-read-only": true
         },
+        "stk_allocationrun": {
+          "type": "string",
+          "title": "Allocation run",
+          "x-ms-dataverse-attribute": "stk_allocationrun",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "stk_allocationrun",
+          "x-ms-dataverse-navigation-properties": [
+            "stk_allocationrun"
+          ]
+        },
+        "stk_allocationrunname": {
+          "type": "string",
+          "title": "stk_allocationrunname",
+          "x-ms-dataverse-attribute": "stk_allocationrunname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_allocationrunName",
+          "x-ms-dataverse-attribute-of": "stk_allocationrun",
+          "x-ms-read-only": true,
+          "maxLength": 30
+        },
         "stk_assignmentid": {
           "type": "string",
           "title": "Assignment",
@@ -306,6 +326,13 @@
           "required": true,
           "maxLength": 100
         },
+        "stk_plannedbags": {
+          "type": "string",
+          "title": "Planned bags",
+          "x-ms-dataverse-attribute": "stk_plannedbags",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "stk_plannedbags"
+        },
         "stk_rows": {
           "type": "string",
           "title": "Rows",
@@ -313,6 +340,14 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "stk_rows",
           "maxLength": 20
+        },
+        "stk_sections": {
+          "type": "string",
+          "title": "Sections",
+          "x-ms-dataverse-attribute": "stk_sections",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_sections",
+          "maxLength": 400
         },
         "stk_site": {
           "type": "string",

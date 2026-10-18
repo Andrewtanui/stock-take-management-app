@@ -5,11 +5,15 @@
 // reacts to the saved rows (notifications, escalations).
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { CHAIN, addImport, basketMap, setReference } from "./repository";
-import { getSource, type DataSource, type MgmtData, type Signature, type XbsUploadToSave } from "./source";
+import { CHAIN, SITES, addImport, basketMap, setReference } from "./repository";
+import { getSource, type AllocationData, type DataSource, type MgmtData, type Signature, type XbsUploadToSave } from "./source";
+import { pickRecounter, type AllocCounter, type Plan } from "./allocate";
 import type {
   AuditEntry,
+  AllocationChange,
+  AllocationRun,
   BasketMap,
+  CounterProfile,
   CountRow,
   DirectPurchase,
   Exception,
@@ -63,12 +67,46 @@ function useStoreState(source: DataSource, data: MgmtData) {
   const [directPurchases, setDirectPurchases] = useState<DirectPurchase[]>(data.reference.directPurchases);
   // Count lines and stacks are read-only here; they change in the counter app.
   const counts = data.counts ?? [];
+  const [allocation, setAllocation] = useState<AllocationData>(
+    data.allocation ?? { profiles: [], runs: [], lastAreas: {}, rules: { homeArea: true, rotation: true, thirdPartyClearance: true }, people: [] },
+  );
   // Recounts asked from Count approval this session, by line (shown until the page reloads with them).
   const [lineRecounts, setLineRecounts] = useState<Record<string, string>>({});
+  /** R-### → who was picked to do it (this session). */
+  const [recountTo, setRecountTo] = useState<Record<string, string>>({});
   const stacks = data.stacks ?? [];
   const [signatures, setSignatures] = useState<Partial<Record<Role, Signature>>>(data.signatures ?? {});
 
   const me = PEOPLE[role];
+
+  /**
+   * A different counter for a blind recount: present on the published allocation
+   * (or any active profile), not the original counter, not their home area.
+   * Undefined when nobody else fits - the recount then goes to the original counter.
+   */
+  const recounterFor = (site: SiteCode, stack: string, original: { id?: string; name: string }) => {
+    const live = allocation.runs.find((r) => r.status === "Published");
+    const profiles = allocation.profiles.filter((p) => p.active);
+    const ids = live?.present.length ? live.present : profiles.map((p) => p.userId);
+    const nameOf = (id: string) => profiles.find((p) => p.userId === id)?.name ?? allocation.people.find((p) => p.id === id)?.name ?? "";
+    const counters: AllocCounter[] = ids.map((id) => {
+      const p = profiles.find((x) => x.userId === id);
+      return p ? { id, name: p.name, homeRows: p.homeRows, homeSite: p.homeSite, thirdPartyOk: p.thirdPartyOk } : { id, name: nameOf(id), noProfile: true };
+    });
+    const originalId = original.id ?? counters.find((c) => c.name === original.name)?.id;
+    const pick = pickRecounter({
+      site,
+      stack,
+      exclude: [originalId, ...counters.filter((c) => c.name === original.name).map((c) => c.id)].filter(Boolean) as string[],
+      counters,
+      openRecounts: allocation.openRecounts ?? {},
+      rules: allocation.rules,
+      thirdParty: new Set(SITES.filter((x) => x.thirdParty).map((x) => x.code)),
+    });
+    if (!pick) return undefined;
+    setAllocation((a) => ({ ...a, openRecounts: { ...a.openRecounts, [pick.id]: (a.openRecounts?.[pick.id] ?? 0) + 1 } }));
+    return { id: pick.id, name: pick.name };
+  };
   /** Next EX-### after the highest existing one. */
   const nextExceptionId = () => {
     const max = exceptions.reduce((m, e) => Math.max(m, Number(e.id.replace(/\D/g, "")) || 0), 0);
@@ -104,6 +142,7 @@ function useStoreState(source: DataSource, data: MgmtData) {
     issues,
     signatures,
     counts,
+    allocation,
     stacks,
     directPurchases,
     people: data.reference.people,
@@ -142,18 +181,68 @@ function useStoreState(source: DataSource, data: MgmtData) {
     },
 
     /** The open recount for a line: from Dataverse, or asked a moment ago. */
+    /** Creates or updates a counter profile (shown at once, saved in the background). */
+    saveCounterProfile(p: CounterProfile) {
+      const before = allocation.profiles;
+      const key = p.id ?? `new:${p.userId}`;
+      setAllocation((a) => ({ ...a, profiles: [...a.profiles.filter((x) => (x.id ?? `new:${x.userId}`) !== key && x.userId !== p.userId), p] }));
+      source.saveCounterProfile(p).then(
+        (id) => {
+          setAllocation((a) => ({ ...a, profiles: a.profiles.map((x) => (x.userId === p.userId ? { ...x, id } : x)) }));
+          log("Counter profiles", p.name, `${p.active ? "Active" : "Inactive"}; home ${p.homeSite ?? "-"} ${p.homeRows.join(",")}; third parties ${p.thirdPartyOk ? "yes" : "no"}`);
+          flash(`${p.name}'s profile saved.`);
+        },
+        (e: unknown) => {
+          setAllocation((a) => ({ ...a, profiles: before }));
+          flash(`Couldn't save ${p.name}'s profile. ${e instanceof Error ? e.message : ""}`.trim());
+        },
+      );
+    },
+    /** Publishes a counter allocation; returns its name, or nothing if it couldn't be saved. */
+    async publishAllocation(input: { plan: Plan; present: string[]; changes: AllocationChange[] }) {
+      try {
+        const name = await source.publishAllocation(input);
+        const run: AllocationRun = {
+          id: name,
+          name,
+          status: "Published",
+          seed: input.plan.seed,
+          spreadPct: input.plan.spreadPct,
+          present: input.present,
+          plan: input.plan,
+          changes: input.changes,
+          by: me,
+          at: stamp(),
+        };
+        setAllocation((a) => ({ ...a, runs: [run, ...a.runs.map((x) => (x.status === "Published" ? { ...x, status: "Superseded" as const } : x))] }));
+        log("Allocation", name, `Published: ${input.plan.rows.length} counters, seed ${input.plan.seed}, spread ${input.plan.spreadPct}%`);
+        flash(`${name} published. Each counter now sees their area in the Stock Take app.`);
+        return name;
+      } catch (e) {
+        flash(`Couldn't publish the allocation. ${e instanceof Error ? e.message : ""}`.trim());
+        return undefined;
+      }
+    },
+
     lineRecount(line: CountRow) {
       return lineRecounts[lineKeyOf(line)] ?? line.recountOpen;
+    },
+    /** Who a recount sent this session went to. */
+    recountTo(name: string) {
+      return recountTo[name];
     },
     /** Blind recount of one outturn on one stack, without sending the whole sheet back. */
     recountLine(line: CountRow, note: string) {
       const k = lineKeyOf(line);
       setLineRecounts((m) => ({ ...m, [k]: "sending" }));
-      source.recountLine(line, note).then(
+      const to = recounterFor(line.site, line.stack, { id: line.byId, name: line.by });
+      const who = to?.name ?? line.by;
+      source.recountLine(line, note, to).then(
         (name) => {
           setLineRecounts((m) => ({ ...m, [k]: name }));
-          log("Recounts", name, `${line.outturn} at ${line.stack}, asked of ${line.by}${note.trim() ? `: ${note.trim()}` : ""}`);
-          flash(`${name} sent to ${line.by}: recount ${line.outturn} at ${line.stack}.`);
+          setRecountTo((m) => ({ ...m, [name]: who }));
+          log("Recounts", name, `${line.outturn} at ${line.stack}, counted by ${line.by}, recount by ${who}${to ? "" : " (no other counter fits)"}${note.trim() ? `: ${note.trim()}` : ""}`);
+          flash(`${name} sent to ${who}${to ? "" : ` (no other counter fits, so back to ${line.by})`}: recount ${line.outturn} at ${line.stack}.`);
         },
         (e: unknown) => {
           setLineRecounts((m) => {
@@ -171,7 +260,9 @@ function useStoreState(source: DataSource, data: MgmtData) {
     decideVariance(id: string, state: Variance["state"]) {
       const v = variances.find((x) => x.id === id)!;
       setVariances((xs) => xs.map((x) => (x.id === id ? { ...x, state } : x)));
-      persist(source.decideVariance(id, state, causes[id] ?? v.cause), id, () => setVariances((xs) => xs.map((x) => (x.id === id ? v : x))));
+      const to = state === "recount" ? recounterFor(v.site, v.zone, { id: v.counterId, name: v.counter }) : undefined;
+      persist(source.decideVariance(id, state, causes[id] ?? v.cause, to), id, () => setVariances((xs) => xs.map((x) => (x.id === id ? v : x))));
+      if (state === "recount") log("Recounts", id, `Blind recount of ${v.outturn} at ${v.zone}, counted by ${v.counter}, recount by ${to?.name ?? v.counter}`);
       if (state === "exception") {
         const ex: Exception = {
             id: nextExceptionId(),
@@ -192,7 +283,11 @@ function useStoreState(source: DataSource, data: MgmtData) {
         persist(source.addException(ex), "the exception", () => setExceptions((xs) => xs.filter((x) => x.id !== ex.id)));
       }
       flash(
-        state === "recount" ? "Blind recount sent to the counter's phone." : state === "accepted" ? "Count accepted." : "Exception raised and assigned.",
+        state === "recount"
+          ? to
+            ? `Blind recount sent to ${to.name} (a different counter from ${v.counter}).`
+            : `No other counter fits, so the blind recount went back to ${v.counter}.`
+          : state === "accepted" ? "Count accepted." : "Exception raised and assigned.",
       );
     },
 

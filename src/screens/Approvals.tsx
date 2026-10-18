@@ -207,7 +207,7 @@ function SheetLines({ sheet, canRecount }: { sheet: string; canRecount: boolean 
                       {l.photo && <PhotoButton id={l.photo} title={`${l.outturn || l.category} at ${l.stack}`} />}
                       {canRecount &&
                         (asked ? (
-                          <span title={asked === "sending" ? "Sending the recount" : `Blind recount ${asked} sent to ${l.by}`}>
+                          <span title={asked === "sending" ? "Sending the recount" : `Blind recount ${asked} sent to ${store.recountTo(asked) ?? "another counter"}`}>
                             <Chip tone="info">{asked === "sending" ? "Sending…" : asked}</Chip>
                           </span>
                         ) : l.other ? null : (
@@ -232,7 +232,7 @@ function SheetLines({ sheet, canRecount }: { sheet: string; canRecount: boolean 
                             <strong>
                               Blind recount of <span className="code">{l.outturn}</span> at <span className="code">{l.stack}</span>
                             </strong>{" "}
-                            <span className="muted">· goes to {l.by}'s phone; the other lines stay as they are.</span>
+                            <span className="muted">· goes to a different counter picked at random (not {l.by}); the other lines stay as they are.</span>
                           </p>
                           <label className="field">
                             <span className="field-label">Reason for the counter (optional)</span>

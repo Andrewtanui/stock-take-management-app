@@ -94,6 +94,8 @@ export interface CountRow {
   units: number;
   kg: number;
   by: string;
+  /** Dataverse user id of the counter (absent in the demo data). */
+  byId?: string;
   /** ISO time the line was counted. */
   countedOn?: string;
   found: boolean;
@@ -162,6 +164,8 @@ export interface Variance {
   cause: RootCause;
   why: string;
   counter: string;
+  /** Dataverse user id of the counter (absent in the demo data). */
+  counterId?: string;
   at: string;
   state: "open" | "recount" | "accepted" | "exception";
   ageHours: number;
@@ -267,4 +271,41 @@ export interface UserRow {
   email: string;
   role: Role | "Counter";
   sites: string;
+}
+
+/* ---------- counter allocation ---------- */
+
+/** Who counts, and where they normally work (never allocated to them). */
+export interface CounterProfile {
+  /** Dataverse id; absent until saved. */
+  id?: string;
+  userId: string;
+  name: string;
+  homeSite?: SiteCode;
+  homeRows: string[];
+  thirdPartyOk: boolean;
+  active: boolean;
+  notes?: string;
+}
+
+/** A supervisor's change to a generated plan, kept with the run for audit. */
+export interface AllocationChange {
+  at: string;
+  by: string;
+  what: string;
+}
+
+/** One published random allocation (stk_allocationrun). */
+export interface AllocationRun {
+  id: string;
+  name: string;
+  status: "Draft" | "Published" | "Superseded";
+  seed: number;
+  spreadPct: number;
+  /** User ids of the counters present. */
+  present: string[];
+  plan: import("./allocate").Plan;
+  changes: AllocationChange[];
+  by?: string;
+  at?: string;
 }

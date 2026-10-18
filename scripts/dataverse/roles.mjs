@@ -33,6 +33,8 @@ const READ_ALL_MGMT = {
   stk_signoff: "R",
   stk_directpurchase: "R",
   stk_issue: "R",
+  stk_counterprofile: "R",
+  stk_allocationrun: "R",
   Note: "R", // photos on count lines and problem reports
 };
 
@@ -54,11 +56,13 @@ export const ROLES = [
   {
     name: "STK Operations Admin",
     misc: ["ReadRecordAuditHistory", "ReadAuditSummary"], // Set-up › Audit log reads Dataverse audit history across the stk_ tables
-    about: "Runs the stock take: set-up, assignments, approvals, variances, exceptions; signs the Operations gate.",
+    about: "Runs the stock take: set-up, counter allocation, approvals, variances, exceptions; signs the Operations gate.",
     tables: {
       ...READ_ALL_MGMT,
       stk_stocktake: "CRW",
       stk_assignment: "CRWD",
+      stk_counterprofile: "CRW", // who counts, home rows, third-party clearance
+      stk_allocationrun: "CRW", // random counter allocation: generate, swap, publish
       stk_countsheet: "RWA",
       stk_stack: "CRW",
       stk_recount: "CRWA",
@@ -121,6 +125,7 @@ export const ROLES = [
       stk_packtype: "CRWD",
       stk_setting: "CRWD",
       stk_issue: "RWA",
+      stk_counterprofile: "CRWD",
     },
   },
   {

@@ -19,6 +19,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "stk_allocationruns": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_allocationrunid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "stk_assignments": {
     "tableId": "",
     "version": "",
@@ -37,6 +44,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_comtraspositionid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_counterprofiles": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_counterprofileid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

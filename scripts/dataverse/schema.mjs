@@ -201,13 +201,53 @@ export const TABLES = [
       ["stk_preparedby", "Reconciliation prepared by", "systemuser"],
     ],
   },
+  // Counter allocation (added 18 Oct 2026): who counts, where they normally work, and
+  // each random allocation run - so a count can be shuffled fairly and audited.
+  {
+    name: "stk_counterprofile", display: "Counter profile", plural: "Counter profiles", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_homerows", "Home rows", s(40)], // "D,E" - rows they work in day to day (not allocated to them)
+      ["stk_thirdpartyok", "Cleared for third-party sites", bool()],
+      ["stk_active", "Active counter", bool()],
+      ["stk_notes", "Notes", memo(2000)],
+    ],
+    lookups: [
+      ["stk_user", "Person", "systemuser", true],
+      ["stk_homesite", "Home warehouse", "stk_site"],
+    ],
+    keys: [["stk_user"]],
+  },
+  {
+    name: "stk_allocationrun", display: "Allocation run", plural: "Allocation runs", own: "org", primary: ["Reference", 30],
+    cols: [
+      ["stk_status", "Status", local("Draft", "Published", "Superseded")],
+      ["stk_seed", "Random seed", int()],
+      ["stk_present", "Counters present (JSON)", memo(4000)],
+      ["stk_plan", "Plan (JSON)", memo(100000)],
+      ["stk_swaps", "Swaps and changes (JSON)", memo(4000)],
+      ["stk_rules", "Rules applied (JSON)", memo(1000)],
+      ["stk_spreadpct", "Workload spread %", dec(2)],
+      ["stk_publishedon", "Published on", dt()],
+    ],
+    lookups: [
+      ["stk_stocktake", "Stock take", "stk_stocktake", true],
+      ["stk_ranby", "Run by", "systemuser"],
+      ["stk_publishedby", "Published by", "systemuser"],
+    ],
+  },
   {
     name: "stk_assignment", display: "Assignment", plural: "Assignments", own: "org", primary: ["Name", 100],
-    cols: [["stk_rows", "Rows", s(20)]],
+    cols: [
+      ["stk_rows", "Rows", s(20)],
+      // Bay sections, e.g. "D1-7,D8-14,C/D" (row + bay range, or a between-rows pair). Empty = use stk_rows.
+      ["stk_sections", "Sections", s(400)],
+      ["stk_plannedbags", "Planned bags", int()],
+    ],
     lookups: [
       ["stk_stocktake", "Stock take", "stk_stocktake", true],
       ["stk_counter", "Counter", "systemuser", true],
       ["stk_site", "Warehouse", "stk_site", true],
+      ["stk_allocationrun", "Allocation run", "stk_allocationrun"],
     ],
   },
   {

@@ -10,4 +10,4 @@ export async function getSource(): Promise<DataSource> {
   return DATA_KIND === "dataverse" ? (await import("./dataverse")).dataverseSource : (await import("./mock")).mockSource;
 }
 
-export type { DataSource, MgmtData, Reference, Signature, Today, XbsUploadToSave } from "./types";
+export type { AllocationData, DataSource, MgmtData, Reference, Signature, Today, XbsUploadToSave } from "./types";

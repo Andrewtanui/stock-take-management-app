@@ -18,10 +18,13 @@ export interface Stk_assignmentsBase {
   overriddencreatedon?: string;
   statecode: Stk_assignmentsstatecode;
   statuscode?: Stk_assignmentsstatuscode;
+  "stk_allocationrun@odata.bind"?: string;
   stk_assignmentid: string;
   "stk_counter@odata.bind": string;
   stk_name: string;
+  stk_plannedbags?: number;
   stk_rows?: string;
+  stk_sections?: string;
   "stk_site@odata.bind": string;
   "stk_stocktake@odata.bind": string;
   timezoneruleversionnumber?: number;
@@ -44,6 +47,8 @@ export interface Stk_assignments extends Stk_assignmentsBase {
   _modifiedonbehalfby_value?: string;
   organizationid?: object;
   _organizationid_value?: string;
+  stk_allocationrun?: object;
+  _stk_allocationrun_value?: string;
   stk_counter?: object;
   _stk_counter_value?: string;
   stk_site?: object;

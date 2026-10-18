@@ -7,9 +7,11 @@
 export * as AnnotationsModel from './models/AnnotationsModel';
 export * as AuditsModel from './models/AuditsModel';
 export * as CommonModels from './models/CommonModels';
+export * as Stk_allocationrunsModel from './models/Stk_allocationrunsModel';
 export * as Stk_assignmentsModel from './models/Stk_assignmentsModel';
 export * as Stk_basketmapsModel from './models/Stk_basketmapsModel';
 export * as Stk_comtraspositionsModel from './models/Stk_comtraspositionsModel';
+export * as Stk_counterprofilesModel from './models/Stk_counterprofilesModel';
 export * as Stk_countlinesModel from './models/Stk_countlinesModel';
 export * as Stk_countsheetsModel from './models/Stk_countsheetsModel';
 export * as Stk_directpurchasesModel from './models/Stk_directpurchasesModel';
@@ -32,9 +34,11 @@ export * as SystemusersModel from './models/SystemusersModel';
 // Services
 export * from './services/AnnotationsService';
 export * from './services/AuditsService';
+export * from './services/Stk_allocationrunsService';
 export * from './services/Stk_assignmentsService';
 export * from './services/Stk_basketmapsService';
 export * from './services/Stk_comtraspositionsService';
+export * from './services/Stk_counterprofilesService';
 export * from './services/Stk_countlinesService';
 export * from './services/Stk_countsheetsService';
 export * from './services/Stk_directpurchasesService';

@@ -21,6 +21,8 @@ export interface CountFact {
   by: string;
   at: string;
   other: boolean;
+  /** The blind recount this line answers (its R-### name); its lines replace earlier ones for the lot. */
+  recount?: string;
 }
 
 export interface VarianceDraft {
@@ -62,12 +64,18 @@ export function draftVariances(
   const lotKey = (site: SiteCode, stack: string, batch: string) => `${site}|${thirdParty.has(site) ? "" : stack}|${batch}`;
   const where = (l: XbsLine) => `${siteShort(l.wh)}${!thirdParty.has(l.wh) && l.z ? " " + l.z : ""}`;
 
-  // Counted, by lot.
+  // Counted, by lot. Once a lot is recounted, only the latest recount's lines
+  // count: it is usually done by a different counter, and isn't a duplicate.
   const counted = new Map<string, CountFact[]>();
   for (const c of counts) {
     if (c.other) continue;
     const k = lotKey(c.site, c.stack, c.batch);
     counted.set(k, [...(counted.get(k) ?? []), c]);
+  }
+  const rn = (x?: string) => Number((x ?? "").replace(/\D/g, "")) || 0;
+  for (const [k, cs] of counted) {
+    const latest = cs.reduce((m, c) => (c.recount && rn(c.recount) > rn(m) ? c.recount : m), undefined as string | undefined);
+    if (latest) counted.set(k, cs.filter((c) => c.recount === latest));
   }
 
   // Which lots to judge: every expected lot on a submitted Ibero stack, and

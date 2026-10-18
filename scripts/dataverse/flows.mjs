@@ -3,10 +3,23 @@
 // Connections are reached through connection references, so the solution can
 // move between environments and be re-bound there.
 
-const ENV_ID = "fbbef02c-fb2e-e56f-926c-4fe610004640";
+// App links in messages follow the environment the scripts target (DATAVERSE_URL, see auth.mjs).
+const APPS = {
+  "https://orged86d520.crm4.dynamics.com": {
+    env: "61203bbf-8829-e6fd-bbdd-bb98d7fa1d56", // NKG_Demo
+    management: "56b37b75-e3f7-46cf-9ba0-c4a156bc9fd8",
+    counter: "f4369855-d7ae-424c-94ff-b790a89cfedd",
+  },
+  default: {
+    env: "fbbef02c-fb2e-e56f-926c-4fe610004640", // Pathways dev
+    management: "415dbc66-f07f-4819-8995-337876f7c185",
+    counter: "e66f3a71-e7f8-411e-8443-a0303d39ed78",
+  },
+};
+const APP = APPS[process.env.DATAVERSE_URL ?? ""] ?? APPS.default;
 export const APP_LINK = {
-  management: `https://apps.powerapps.com/play/e/${ENV_ID}/a/415dbc66-f07f-4819-8995-337876f7c185`,
-  counter: `https://apps.powerapps.com/play/e/${ENV_ID}/a/e66f3a71-e7f8-411e-8443-a0303d39ed78`,
+  management: `https://apps.powerapps.com/play/e/${APP.env}/a/${APP.management}`,
+  counter: `https://apps.powerapps.com/play/e/${APP.env}/a/${APP.counter}`,
 };
 
 export const CONNECTION_REFERENCES = {
@@ -39,6 +52,7 @@ const CHANGE = { pending: 614500000, approved: 614500001, rejected: 614500002, b
 const PRIMARY_BASKET = { Plus: 614500000, FAQ: 614500001, Grinder: 614500002 };
 const SIGNOFF = { signed: 614500000, sentBack: 614500001, finance: 614500003 };
 const STOCKTAKE = { completed: 614500003 };
+const ALLOCATION = { published: 614500001 };
 /** F4: calendar days overdue before each escalation step. */
 const ESCALATE = { hodAfterDays: 3, cfmAfterDays: 7 };
 /** F8: share of a warehouse's XBS lines that must be counted before its difference is shown. */
@@ -863,6 +877,41 @@ export function flows(cfg) {
           "Get_owner",
         ),
       }),
+    },
+    {
+      name: "IBKY F9 · Allocation published → counters",
+      description:
+        "When Operations publishes a counter allocation, tell each counter in Teams where they count. Areas only: no planned bags, which come from XBS (blind counting).",
+      // 4 = added or modified: a run is created as Published; a Draft could also be published later.
+      data: clientdata(
+        "When_an_allocation_is_published",
+        rowTrigger("stk_allocationrun", 4, { columns: "stk_status", filter: `stk_status eq ${ALLOCATION.published}` }),
+        {
+          Get_stock_take: getRow("stk_stocktakes", trig("_stk_stocktake_value"), "stk_name", null),
+          List_assignments: listRows(
+            "stk_assignments",
+            { select: "stk_name,_stk_counter_value", filter: `_stk_allocationrun_value eq ${trig("stk_allocationrunid")} and statecode eq 0` },
+            "Get_stock_take",
+          ),
+          For_each_assignment: {
+            type: "Foreach",
+            foreach: "@outputs('List_assignments')?['body/value']",
+            actions: {
+              Get_counter: getRow("systemusers", "@{items('For_each_assignment')?['_stk_counter_value']}", "fullname,internalemailaddress", null),
+              Tell_the_counter: teamsPost(
+                { kind: "chat", email: field("Get_counter", "internalemailaddress") },
+                `<p><b>Your counting area</b> — ${field("Get_stock_take", "stk_name")}</p>` +
+                  // stk_name is "<counter> · <site> <sections>"; keep the part after the name.
+                  `<p>${"@{last(split(items('For_each_assignment')?['stk_name'], ' · '))}"}</p>` +
+                  `<p>Allocation ${trig("stk_name")}. Your stacks are on the checklist in the stock take app; count only those.</p>` +
+                  `<p><a href="${APP_LINK.counter}">Open the stock take app</a></p>`,
+                "Get_counter",
+              ),
+            },
+            runAfter: after("List_assignments"),
+          },
+        },
+      ),
     },
     {
       name: "IBKY F7c · Problem resolved → reporter",

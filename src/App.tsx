@@ -15,12 +15,14 @@ import {
   Scale,
   Settings,
   ShoppingBasket,
+  Shuffle,
 } from "lucide-react";
 import { ROLES, TODAY } from "./data/repository";
 import { PEOPLE, useStore } from "./data/store";
 import type { Role } from "./data/types";
 import Overview from "./screens/Overview";
 import StockTakes from "./screens/StockTakes";
+import Allocate from "./screens/Allocate";
 import Import from "./screens/Import";
 import Checks from "./screens/Checks";
 import LiveBoard from "./screens/LiveBoard";
@@ -39,6 +41,7 @@ import { Logo } from "./ui/Logo";
 export type Page =
   | "overview"
   | "stocktakes"
+  | "allocate"
   | "import"
   | "checks"
   | "live"
@@ -78,6 +81,7 @@ export default function App() {
       label: "Stock take",
       items: [
         { id: "stocktakes", label: "Stock takes", icon: ClipboardCheck },
+        { id: "allocate", label: "Allocate counters", icon: Shuffle },
         { id: "import", label: "XBS import", icon: FileUp },
         { id: "checks", label: "Pre-count checks", icon: ListChecks },
         { id: "live", label: "Count day live", icon: Gauge },
@@ -113,6 +117,7 @@ export default function App() {
   const screens: Record<Page, JSX.Element> = {
     overview: <Overview />,
     stocktakes: <StockTakes />,
+    allocate: <Allocate />,
     import: <Import />,
     checks: <Checks />,
     live: <LiveBoard />,

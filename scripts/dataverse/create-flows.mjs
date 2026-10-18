@@ -1,6 +1,7 @@
 // Creates (or updates) the Stage 4 flows and their connection references in IBKYStockTake,
 // then turns the flows on.
-//   npm run dv:flows -- --team <teamId> --channel <channelId> [--dataverse <connId>] [--teams <connId>] [--approvals <connId>] [--outlook <connId>] [--dry-run]
+//   npm run dv:flows -- --team <teamId> --channel <channelId> [--dataverse <connId>] [--teams <connId>] [--approvals <connId>] [--outlook <connId>] [--only "IBKY F9"] [--dry-run]
+// --only: create/update just the flows whose name starts with this text (the others are left as they are).
 // Connection ids: `npx pa connection list`. Team/channel: from a Teams "Get link to channel" URL.
 import { dv } from "./api.mjs";
 import { CONNECTION_REFERENCES, flows } from "./flows.mjs";
@@ -59,4 +60,5 @@ async function ensureFlow(f) {
 }
 
 for (const [key, ref] of Object.entries(CONNECTION_REFERENCES)) await ensureReference(key, ref);
-for (const f of flows(cfg)) await ensureFlow(f);
+const only = arg("only");
+for (const f of flows(cfg).filter((x) => !only || x.name.startsWith(only))) await ensureFlow(f);

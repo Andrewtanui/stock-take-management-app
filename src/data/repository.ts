@@ -70,6 +70,8 @@ export const CHAIN: { role: Role; title: string; signs: string }[] = [
 /** What each role may change. Everyone can view. */
 export const PERMISSIONS: { area: string; can: Role[] }[] = [
   { area: "Create and close stock takes", can: ["Operations Admin"] },
+  { area: "Allocate counters", can: ["Operations Admin"] },
+  { area: "Counter profiles", can: ["Operations Admin", "IT Admin"] },
   { area: "Import XBS stock", can: ["Operations Admin", "IT Admin"] },
   { area: "Approve or reject count sheets", can: ["Operations Admin", "Warehouse Manager"] },
   { area: "Decide variance causes", can: ["Operations Admin", "Warehouse Manager", "Finance"] },

@@ -11,6 +11,7 @@
     "dv:schema:dry": "node scripts/dataverse/create-schema.mjs --dry-run",
     "dv:roles": "node scripts/dataverse/create-roles.mjs",
     "check:shared": "node scripts/check-shared.mjs",
+    "test:allocate": "node scripts/test-allocate.mjs",
     "dv:seed": "node scripts/dataverse/seed.mjs",
     "dev:dv": "vite --mode dataverse",
     "build:dv": "tsc -b && vite build --mode dataverse",

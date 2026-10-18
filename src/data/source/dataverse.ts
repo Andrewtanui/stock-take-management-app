@@ -21,6 +21,9 @@ import type { IOperationResult } from "@microsoft/power-apps/data";
 import type { IGetAllOptions } from "../../generated/models/CommonModels";
 import { AuditsService } from "../../generated/services/AuditsService";
 import { Stk_assignmentsService } from "../../generated/services/Stk_assignmentsService";
+import { Stk_allocationrunsService } from "../../generated/services/Stk_allocationrunsService";
+import { Stk_counterprofilesService } from "../../generated/services/Stk_counterprofilesService";
+import { Stk_allocationrunsstk_status } from "../../generated/models/Stk_allocationrunsModel";
 import { Stk_basketmapsService } from "../../generated/services/Stk_basketmapsService";
 import { Stk_mappingchangesService } from "../../generated/services/Stk_mappingchangesService";
 import { Stk_outturnmapsService } from "../../generated/services/Stk_outturnmapsService";
@@ -67,6 +70,9 @@ import type {
   Counter,
   CountRow,
   CountSheet,
+  AllocationChange,
+  AllocationRun,
+  CounterProfile,
   Dept,
   DirectPurchase,
   Exception,
@@ -87,9 +93,11 @@ import type {
   XbsImport,
   XbsLine,
 } from "../types";
-import type { DataSource, MgmtData, Signature, Today, XbsUploadToSave } from "./types";
+import type { AllocationData, DataSource, MgmtData, Signature, Today, XbsUploadToSave } from "./types";
+import { assignmentFor, type AllocRules, type Plan } from "../allocate";
+import { sectionList, sectionRows, sectionsWords } from "../../shared/sections";
 import { MATCH_TOLERANCE_KG } from "../../shared/count-rules";
-import { CHAIN } from "../repository";
+import { CHAIN, SITES } from "../repository";
 
 /* ---------- helpers ---------- */
 
@@ -304,7 +312,7 @@ async function load(): Promise<MgmtData> {
   // Count work on the active stock take.
   const [sheetRows, assignmentRows, stackRows, recountRows] = await Promise.all([
     all((o) => Stk_countsheetsService.getAll(o), { select: ["stk_countsheetid", "stk_name", "stk_status", "stk_submittedon", "stk_countercomment", "stk_decisioncomment", "stk_linecount", "stk_variancecount", "stk_bags", "_stk_site_value", "_stk_assignment_value", "_stk_stocktake_value", "_createdby_value"] }, "read count sheets"),
-    all((o) => Stk_assignmentsService.getAll(o), { select: ["stk_assignmentid", "stk_rows", "_stk_site_value", "_stk_counter_value", "_stk_stocktake_value"], filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read assignments"),
+    all((o) => Stk_assignmentsService.getAll(o), { select: ["stk_assignmentid", "stk_rows", "stk_sections", "_stk_site_value", "_stk_counter_value", "_stk_stocktake_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid} and statecode eq 0` }, "read assignments"),
     all((o) => Stk_stacksService.getAll(o), { select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value"], filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read stacks"),
     all((o) => Stk_recountsService.getAll(o), { select: ["stk_recountid", "stk_name", "stk_batch", "stk_status", "_stk_stack_value", "_ownerid_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read recounts"),
   ]);
@@ -362,6 +370,7 @@ async function load(): Promise<MgmtData> {
   const submittedStacks = stackRows
     .filter((r) => submittedStates.has(label(Stk_stacksstk_status, r.stk_status) ?? ""))
     .map((r) => ({ site: siteCode.get(r._stk_site_value!)!, stack: r.stk_name }));
+  const recountName = new Map((recountRows as unknown as { stk_recountid: string; stk_name: string }[]).map((r) => [r.stk_recountid, r.stk_name]));
   const facts: CountFact[] = countRows.map((c) => ({
     lineId: c.stk_countlineid,
     site: siteCode.get(c._stk_site_value!)!,
@@ -374,6 +383,7 @@ async function load(): Promise<MgmtData> {
     by: nm(c._createdby_value),
     at: hhmm(c.stk_countedon),
     other: !!c.stk_isother,
+    recount: recountName.get((c as { _stk_recount_value?: string })._stk_recount_value ?? ""),
   }));
   const thirdParty = new Set(sites.filter((x) => x.thirdParty).map((x) => x.code));
   const drafts = draftVariances(facts, lines, submittedStacks, thirdParty, (c) => sites.find((x) => x.code === c)?.short ?? c);
@@ -422,6 +432,7 @@ async function load(): Promise<MgmtData> {
       id: v.stk_name,
       photo: photoOf.get(v._stk_countline_value),
       site,
+      counterId: line?._createdby_value,
       zone: thirdParty.has(site) ? `${sites.find((x) => x.code === site)?.short} · ${where?.name ?? ""}` : (where?.name ?? ""),
       outturn: v.stk_outturn ?? "",
       grade: v.stk_grade ?? "",
@@ -683,19 +694,19 @@ async function load(): Promise<MgmtData> {
 
   /* reports and approvals: the raw count lines and stack statuses */
   const sheetName = new Map(activeSheets.map((r) => [r.stk_countsheetid, r.stk_name]));
-  // Open recounts by stack + batch + counter, so a line shows "recount asked" until it is redone.
+  // Open recounts by stack + batch, so a line shows "recount asked" until someone redoes it.
   const openRecount = code(Stk_recountsstk_status, "Open");
   const recountOf = new Map(
     (recountRows as unknown as { stk_name: string; stk_batch?: string; stk_status?: number; _stk_stack_value?: string; _ownerid_value?: string }[])
       .filter((r) => r.stk_status === openRecount)
-      .map((r) => [`${r._stk_stack_value}|${r.stk_batch ?? ""}|${r._ownerid_value}`, r.stk_name]),
+      .map((r) => [`${r._stk_stack_value}|${r.stk_batch ?? ""}`, r.stk_name]),
   );
   const counts: CountRow[] = countRows.map((c) => {
     const x = c as typeof c & { stk_pocketkg?: number; stk_category?: number; _stk_recount_value?: string };
     ids.line.set(c.stk_countlineid, { stackId: c._stk_stack_value, outturn: c.stk_outturn ?? "", batch: c.stk_batch ?? "", counterId: c._createdby_value });
     return {
       id: c.stk_countlineid,
-      recountOpen: recountOf.get(`${c._stk_stack_value}|${c.stk_batch ?? ""}|${c._createdby_value}`),
+      recountOpen: recountOf.get(`${c._stk_stack_value}|${c.stk_batch ?? ""}`),
       site: siteCode.get(c._stk_site_value!)!,
       stack: stackOf.get(c._stk_stack_value!)?.name ?? "",
       batch: c.stk_batch ?? "",
@@ -706,6 +717,7 @@ async function load(): Promise<MgmtData> {
       units: c.stk_units ?? (c.stk_bags ?? 0) + (c.stk_pocketbags ?? 0),
       kg: Number(c.stk_kg ?? 0),
       by: nm(c._createdby_value),
+      byId: c._createdby_value,
       countedOn: c.stk_countedon ?? undefined,
       found: !!c.stk_isfound,
       other: !!c.stk_isother,
@@ -722,9 +734,15 @@ async function load(): Promise<MgmtData> {
     status: label(Stk_stacksstk_status, r.stk_status) ?? "In progress",
   }));
 
+  const allocation = await readAllocation(active.stk_stocktakeid, settingRows, peopleRows);
+  allocation.openRecounts = {};
+  for (const r of recountRows as unknown as { stk_status?: number; _ownerid_value?: string }[])
+    if (r.stk_status === code(Stk_recountsstk_status, "Open") && r._ownerid_value) allocation.openRecounts[r._ownerid_value] = (allocation.openRecounts[r._ownerid_value] ?? 0) + 1;
+
   return {
     counts,
     stacks,
+    allocation,
     reference: {
       today,
       lines,
@@ -881,7 +899,7 @@ async function decideSheet(name: string, status: SheetStatus, comment: string) {
       );
 }
 
-async function decideVariance(name: string, state: Variance["state"], cause: RootCause) {
+async function decideVariance(name: string, state: Variance["state"], cause: RootCause, to?: { id: string; name: string }) {
   const v = ids.variance.get(name);
   if (!v) throw new Error(`Variance ${name} not found`);
   unwrap(
@@ -908,16 +926,176 @@ async function decideVariance(name: string, state: Variance["state"], cause: Roo
         "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
         "stk_stack@odata.bind": bind("stk_stacks", v.stackId),
         "stk_variance@odata.bind": bind("stk_variances", v.id),
-        // Assign it to whoever counted, so it lands on their phone.
-        ...(v.counterId ? { "ownerid@odata.bind": bind("systemusers", v.counterId) } : {}),
+        // A different counter when one was picked (blind, fresh eyes); otherwise whoever counted.
+        ...((to?.id ?? v.counterId) ? { "ownerid@odata.bind": bind("systemusers", to?.id ?? v.counterId!) } : {}),
       } as never),
       "send the recount",
     );
   }
 }
 
+/* ---------- counter allocation ---------- */
+
+const parseJson = <T,>(t: string | undefined | null, d: T): T => {
+  try {
+    return t ? (JSON.parse(t) as T) : d;
+  } catch {
+    return d;
+  }
+};
+
+/** Counter profiles, this stock take's allocation runs, last stock take's areas (rotation) and the rules. */
+async function readAllocation(
+  stockTakeId: string,
+  settingRows: { stk_name: string; stk_value?: string }[],
+  peopleRows: { systemuserid: string; fullname?: string }[],
+): Promise<AllocationData> {
+  const [profileRows, runRows] = await Promise.all([
+    all(
+      (o) => Stk_counterprofilesService.getAll(o),
+      { select: ["stk_counterprofileid", "stk_name", "stk_homerows", "stk_thirdpartyok", "stk_active", "stk_notes", "_stk_user_value", "_stk_homesite_value"] as never },
+      "read counter profiles",
+    ),
+    all(
+      (o) => Stk_allocationrunsService.getAll(o),
+      {
+        select: ["stk_allocationrunid", "stk_name", "stk_status", "stk_seed", "stk_spreadpct", "stk_present", "stk_plan", "stk_swaps", "stk_publishedon", "_stk_publishedby_value", "_stk_stocktake_value", "createdon"] as never,
+        orderBy: ["createdon desc"],
+      },
+      "read allocation runs",
+    ),
+  ]);
+  const siteOf = new Map([...ids.site.entries()].map(([c, id]) => [id, c]));
+  const nameOf = new Map(peopleRows.map((u) => [u.systemuserid, u.fullname ?? ""]));
+  const profiles: CounterProfile[] = profileRows.map((p) => ({
+    id: p.stk_counterprofileid,
+    userId: p._stk_user_value!,
+    name: nameOf.get(p._stk_user_value!) || p.stk_name,
+    homeSite: p._stk_homesite_value ? siteOf.get(p._stk_homesite_value) : undefined,
+    homeRows: (p.stk_homerows ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean),
+    thirdPartyOk: !!p.stk_thirdpartyok,
+    active: p.stk_active !== false,
+    notes: p.stk_notes ?? undefined,
+  }));
+  const emptyPlan: Plan = { seed: 0, rows: [], unassigned: [], spreadPct: 0, rotationRepeats: 0, multiSite: 0, warnings: [], rules: { homeArea: true, rotation: true, thirdPartyClearance: true } };
+  const toRun = (r: (typeof runRows)[number]): AllocationRun => ({
+    id: r.stk_allocationrunid,
+    name: r.stk_name,
+    status: (label(Stk_allocationrunsstk_status, r.stk_status) ?? "Draft") as AllocationRun["status"],
+    seed: r.stk_seed ?? 0,
+    spreadPct: Number(r.stk_spreadpct ?? 0),
+    present: parseJson<string[]>(r.stk_present, []),
+    plan: parseJson<Plan>(r.stk_plan, emptyPlan),
+    changes: parseJson<AllocationChange[]>(r.stk_swaps, []),
+    by: r._stk_publishedby_value ? nameOf.get(r._stk_publishedby_value) : undefined,
+    at: r.stk_publishedon ? stamp(r.stk_publishedon) : undefined,
+  });
+  const runs = runRows.filter((r) => r._stk_stocktake_value === stockTakeId).map(toRun);
+  // Rotation: the areas each counter had in the latest published plan of another stock take.
+  const used = new Set([code(Stk_allocationrunsstk_status, "Published"), code(Stk_allocationrunsstk_status, "Superseded")]);
+  const previous = runRows.find((r) => r._stk_stocktake_value !== stockTakeId && used.has(r.stk_status!));
+  const lastAreas: Record<string, string[]> = {};
+  if (previous) for (const row of toRun(previous).plan.rows) lastAreas[row.counterId] = row.areas.map((a) => a.key.replace(/#\d+$/, ""));
+  const rulesText = settingRows.find((x) => x.stk_name === "AllocationRules")?.stk_value;
+  const rules: AllocRules = { homeArea: true, rotation: true, thirdPartyClearance: true, ...parseJson<Partial<AllocRules>>(rulesText, {}) };
+  const people = peopleRows.filter((u) => u.fullname && !u.fullname.startsWith("#")).map((u) => ({ id: u.systemuserid, name: u.fullname! }));
+  return { profiles, runs, lastAreas, rules, people };
+}
+
+async function saveCounterProfile(p: CounterProfile) {
+  const fields = {
+    stk_name: p.name.slice(0, 100),
+    stk_homerows: p.homeRows.join(","),
+    stk_thirdpartyok: p.thirdPartyOk,
+    stk_active: p.active,
+    stk_notes: p.notes ?? null,
+    "stk_user@odata.bind": bind("systemusers", p.userId),
+    ...(p.homeSite ? { "stk_homesite@odata.bind": bind("stk_sites", ids.site.get(p.homeSite)!) } : {}),
+  };
+  if (p.id) {
+    unwrap(await Stk_counterprofilesService.update(p.id, fields as never), `update ${p.name}'s profile`);
+    return p.id;
+  }
+  return unwrap(await Stk_counterprofilesService.create({ ...fields, statecode: 0 } as never), `save ${p.name}'s profile`).stk_counterprofileid;
+}
+
+/**
+ * Publishes an allocation. The previous published run becomes Superseded; each
+ * counter gets one active assignment per warehouse in the plan (updated in place
+ * where one exists, so count sheets keep their link); assignments of people no
+ * longer in the plan are deactivated, never deleted.
+ */
+async function publishAllocation(input: { plan: Plan; present: string[]; changes: AllocationChange[] }) {
+  const { plan } = input;
+  const runs = await all((o) => Stk_allocationrunsService.getAll(o), { select: ["stk_allocationrunid", "stk_name", "stk_status", "_stk_stocktake_value"] as never }, "number the allocation");
+  const published = code(Stk_allocationrunsstk_status, "Published");
+  const name = `AR-${String(runs.reduce((m, r) => Math.max(m, Number(r.stk_name.replace(/\D/g, "")) || 0), 0) + 1).padStart(3, "0")}`;
+  for (const r of runs.filter((x) => x._stk_stocktake_value === ids.stockTakeId && x.stk_status === published))
+    unwrap(await Stk_allocationrunsService.update(r.stk_allocationrunid, { stk_status: code(Stk_allocationrunsstk_status, "Superseded") } as never), `supersede ${r.stk_name}`);
+  const now = new Date().toISOString();
+  const run = unwrap(
+    await Stk_allocationrunsService.create({
+      stk_name: name,
+      statecode: 0,
+      stk_status: published,
+      stk_seed: plan.seed,
+      stk_spreadpct: plan.spreadPct,
+      stk_present: JSON.stringify(input.present).slice(0, 4000),
+      stk_plan: JSON.stringify(plan),
+      stk_swaps: JSON.stringify(input.changes).slice(0, 4000),
+      stk_rules: JSON.stringify(plan.rules),
+      stk_publishedon: now,
+      "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+      "stk_ranby@odata.bind": bind("systemusers", ids.me),
+      "stk_publishedby@odata.bind": bind("systemusers", ids.me),
+    } as never),
+    "save the allocation",
+  );
+  const existing = await all(
+    (o) => Stk_assignmentsService.getAll(o),
+    { select: ["stk_assignmentid", "_stk_counter_value", "_stk_site_value"] as never, filter: `_stk_stocktake_value eq ${ids.stockTakeId} and statecode eq 0` },
+    "read assignments",
+  );
+  const keep = new Set<string>();
+  for (const row of plan.rows) {
+    const bySite = new Map<SiteCode, typeof row.areas>();
+    for (const a of row.areas) bySite.set(a.site, [...(bySite.get(a.site) ?? []), a]);
+    for (const [site, areas] of bySite) {
+      const { sections, bags } = assignmentFor(areas);
+      const rows = [...new Set(sectionList(sections).flatMap(sectionRows))];
+      // "<counter> · Ibero rows A, B and G" / "<counter> · AGL whole site" - F9 sends the part after " · ".
+      const where = site === "IBR" ? sectionsWords(sectionList(sections)) : "whole site";
+      const fields = {
+        stk_name: `${row.name} · ${SITES.find((x) => x.code === site)?.short ?? site} ${where}`.slice(0, 100),
+        stk_sections: sections || null,
+        stk_rows: rows.join(",").slice(0, 20) || null,
+        stk_plannedbags: bags,
+        "stk_allocationrun@odata.bind": bind("stk_allocationruns", run.stk_allocationrunid),
+      };
+      const had = existing.find((x) => x._stk_counter_value === row.counterId && x._stk_site_value === ids.site.get(site));
+      if (had) {
+        keep.add(had.stk_assignmentid);
+        unwrap(await Stk_assignmentsService.update(had.stk_assignmentid, fields as never), `update ${row.name}'s assignment`);
+      } else
+        unwrap(
+          await Stk_assignmentsService.create({
+            ...fields,
+            statecode: 0,
+            "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+            "stk_counter@odata.bind": bind("systemusers", row.counterId),
+            "stk_site@odata.bind": bind("stk_sites", ids.site.get(site)!),
+          } as never),
+          `assign ${row.name}`,
+        );
+    }
+  }
+  for (const x of existing.filter((e) => !keep.has(e.stk_assignmentid)))
+    unwrap(await Stk_assignmentsService.update(x.stk_assignmentid, { statecode: 1, statuscode: 2 } as never), "close an old assignment");
+  return name;
+}
+
 /** A supervisor asks for a blind recount of one line, without sending the whole sheet back. */
-async function recountLine(line: CountRow, note: string) {
+async function recountLine(line: CountRow, note: string, to?: { id: string; name: string }) {
   const l = line.id ? ids.line.get(line.id) : undefined;
   if (!l?.stackId) throw new Error(`${line.outturn || "this line"} at ${line.stack} can't be recounted: it has no saved stack`);
   const existing = await all((o) => Stk_recountsService.getAll(o), { select: ["stk_name"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` }, "number the recount");
@@ -936,8 +1114,8 @@ async function recountLine(line: CountRow, note: string) {
       "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
       "stk_stack@odata.bind": bind("stk_stacks", l.stackId),
       ...(variance ? { "stk_variance@odata.bind": bind("stk_variances", variance.id) } : {}),
-      // The counter who made the line, so it lands on their phone and replaces their line.
-      ...(l.counterId ? { "ownerid@odata.bind": bind("systemusers", l.counterId) } : {}),
+      // A different counter when one was picked; their line replaces the earlier one for the lot.
+      ...((to?.id ?? l.counterId) ? { "ownerid@odata.bind": bind("systemusers", to?.id ?? l.counterId!) } : {}),
     } as never),
     "send the recount",
   );
@@ -1365,6 +1543,8 @@ export const dataverseSource: DataSource = {
   decideSheet,
   decideVariance,
   recountLine,
+  saveCounterProfile,
+  publishAllocation,
   addException,
   updateException,
   requestMapping,

@@ -21,7 +21,8 @@ import type {
   XbsImport,
   XbsLine,
 } from "../types";
-import type { DataSource, MgmtData } from "./types";
+import type { AllocationData, DataSource, MgmtData } from "./types";
+import type { CounterProfile } from "../types";
 
 const lines = raw as XbsLine[];
 
@@ -103,6 +104,30 @@ const COUNTERS: Counter[] = [
   { name: "Moses K.", site: "MAXA", area: "Whole site", bagsSoFar: 1307, startedAt: 10, recounts: 0 },
   { name: "Nancy C.", site: "MCF", area: "Whole site", bagsSoFar: 187, startedAt: 10, recounts: 0 },
 ];
+
+/**
+ * Demo counter profiles: each demo counter's home is where they count today
+ * ("Rows D–E" → home rows D and E), so the allocation must send them elsewhere.
+ * Every second Ibero counter is cleared for third-party sites.
+ */
+const PROFILES: CounterProfile[] = COUNTERS.map((c, i) => ({
+  id: `demo-profile-${i}`,
+  userId: `demo-${c.name}`,
+  name: c.name,
+  homeSite: c.site,
+  homeRows: c.site === "IBR" ? (c.area.match(/[A-G]/g) ?? []) : [],
+  thirdPartyOk: c.site !== "IBR" || i % 2 === 1,
+  active: true,
+}));
+const ALLOCATION: AllocationData = {
+  profiles: PROFILES,
+  runs: [],
+  lastAreas: {},
+  rules: { homeArea: true, rotation: true, thirdPartyClearance: true },
+  people: [...PROFILES.map((p) => ({ id: p.userId, name: p.name })), { id: "demo-Oscar N.", name: "Oscar N." }, { id: "demo-Pauline W.", name: "Pauline W." }],
+};
+let profileN = 0;
+let allocationN = 0;
 
 const HOURLY = [
   { h: "07", bags: 3480 },
@@ -348,6 +373,7 @@ export const mockSource: DataSource = {
       },
       stockTakes: STOCK_TAKES,
       sheets: SHEETS,
+      allocation: ALLOCATION,
       variances: VARIANCES,
       exceptions: EXCEPTIONS,
       changes: MAPPING_CHANGES,
@@ -364,6 +390,8 @@ export const mockSource: DataSource = {
   decideSheet: ok,
   decideVariance: ok,
   recountLine: async () => `R-${String(100 + ++recountN)}`,
+  saveCounterProfile: async (p) => p.id ?? `demo-profile-new-${++profileN}`,
+  publishAllocation: async () => `AR-${String(++allocationN).padStart(3, "0")}`,
   addException: ok,
   updateException: ok,
   requestMapping: ok,

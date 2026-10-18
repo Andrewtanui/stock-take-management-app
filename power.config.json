@@ -128,6 +128,16 @@
           "entitySetName": "annotations",
           "logicalName": "annotation",
           "isHidden": false
+        },
+        "counterprofiles": {
+          "entitySetName": "stk_counterprofiles",
+          "logicalName": "stk_counterprofile",
+          "isHidden": false
+        },
+        "allocationruns": {
+          "entitySetName": "stk_allocationruns",
+          "logicalName": "stk_allocationrun",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

@@ -2,10 +2,14 @@
 // Two implementations: ./mock (demo data in the browser) and ./dataverse (the
 // IBKY Stock Take tables). Pick one with VITE_DATA=mock|dataverse.
 
+import type { AllocRules, Plan } from "../allocate";
 import type {
+  AllocationChange,
+  AllocationRun,
   AuditEntry,
   BasketMap,
   Counter,
+  CounterProfile,
   CountRow,
   CountSheet,
   DirectPurchase,
@@ -72,6 +76,21 @@ export interface MgmtData {
   changes: MappingChange[];
   issues: Issue[];
   audit: AuditEntry[];
+  /** Counter profiles, allocation runs and rules for the random counter allocation. */
+  allocation?: AllocationData;
+}
+
+export interface AllocationData {
+  profiles: CounterProfile[];
+  /** Allocation runs on the active stock take, newest first. */
+  runs: AllocationRun[];
+  /** Area keys each counter had in the previous stock take's published plan (rotation). */
+  lastAreas: Record<string, string[]>;
+  rules: AllocRules;
+  /** People who can be given a counter profile. */
+  people: { id: string; name: string }[];
+  /** Open recounts per person (user id), so new ones go to whoever has fewest. */
+  openRecounts?: Record<string, number>;
 }
 
 /** Who signed each gate of the active stock take. */
@@ -100,9 +119,14 @@ export interface DataSource {
   /** Stores the upload as a new locked import; returns its name. */
   importXbs(upload: XbsUploadToSave, onProgress?: (done: number, total: number) => void): Promise<string>;
   decideSheet(id: string, status: SheetStatus, comment: string): Promise<void>;
-  decideVariance(id: string, state: Variance["state"], cause: RootCause): Promise<void>;
+  /** `to`: who does a blind recount (a different counter); defaults to whoever counted. */
+  decideVariance(id: string, state: Variance["state"], cause: RootCause, to?: { id: string; name: string }): Promise<void>;
+  /** Creates or updates a counter profile; returns its id. */
+  saveCounterProfile(p: CounterProfile): Promise<string>;
+  /** Publishes an allocation: supersedes the last one, writes the counters' assignments; returns the run name (AR-###). */
+  publishAllocation(input: { plan: Plan; present: string[]; changes: AllocationChange[] }): Promise<string>;
   /** Asks the line's counter for a blind recount of that one outturn; returns the recount's name. */
-  recountLine(line: CountRow, note: string): Promise<string>;
+  recountLine(line: CountRow, note: string, to?: { id: string; name: string }): Promise<string>;
   addException(e: Exception): Promise<void>;
   updateException(id: string, patch: Partial<Exception>): Promise<void>;
   requestMapping(c: MappingChange): Promise<void>;

@@ -6,7 +6,7 @@ C create · R read · W write · D delete · A assign. Organisation-wide unless 
 Append/AppendTo follow automatically. Every user also needs the built-in **Basic User** role.
 
 - **STK Counter** — Counts on the floor with the Stock Take app.
-- **STK Operations Admin** — Runs the stock take: set-up, assignments, approvals, variances, exceptions; signs the Operations gate.
+- **STK Operations Admin** — Runs the stock take: set-up, counter allocation, approvals, variances, exceptions; signs the Operations gate.
 - **STK Warehouse Manager** — Approves count sheets, decides variances; signs the Warehouse gate.
 - **STK Trading** — Direct purchases, contract exceptions, mapping requests; signs the Trading gate.
 - **STK Finance** — Decides mapping changes and variances, prepares and certifies the position; signs the Finance gate.
@@ -25,6 +25,8 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 | `stk_basketmap` | R | R | R | R | CRW | R |  |
 | `stk_outturnmap` | R | R | R | R | CRW | R |  |
 | `stk_stocktake` | R | CRW | R | R | RW | R |  |
+| `stk_counterprofile` |  | CRW | R | R | R | CRWD |  |
+| `stk_allocationrun` |  | CRW | R | R | R | R |  |
 | `stk_assignment` | R | CRWD | R | R | R | R |  |
 | `stk_countsheet` | CRW (own) | RWA | RW | R | R | R |  |
 | `stk_stack` | CRW | CRW | RW | R | R | R |  |
