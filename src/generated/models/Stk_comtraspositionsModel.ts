@@ -21,9 +21,15 @@ export interface Stk_comtraspositionsBase {
   stk_bags?: number;
   stk_basketcode?: string;
   stk_comtraspositionid: string;
+  stk_contract?: string;
+  stk_counterparty?: string;
+  stk_kg?: number;
+  stk_linetype?: string;
   stk_name: string;
+  stk_origin?: string;
   stk_snapshotdate?: string;
   stk_source?: string;
+  "stk_stocktake@odata.bind"?: string;
   timezoneruleversionnumber?: number;
   utcconversiontimezonecode?: number;
 }
@@ -44,4 +50,6 @@ export interface Stk_comtraspositions extends Stk_comtraspositionsBase {
   _modifiedonbehalfby_value?: string;
   organizationid?: object;
   _organizationid_value?: string;
+  stk_stocktake?: object;
+  _stk_stocktake_value?: string;
 }

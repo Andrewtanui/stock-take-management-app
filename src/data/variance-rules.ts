@@ -54,12 +54,28 @@ const n = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 })
 const RECENT_DAYS = 14;
 const plural = (x: number, w: string) => `${n(Math.abs(x))} ${w}${Math.abs(x) === 1 ? "" : "s"}`;
 
+/**
+ * A third-party site the counter closed: reported empty, or finished (every stack counted).
+ * Either way, every lot XBS has there that wasn't counted counts as 0.
+ */
+export interface EmptySite {
+  site: SiteCode;
+  /** The site's marker stack ("Whole site"). */
+  stack: string;
+  by: string;
+  at: string;
+  reason: string;
+  /** Finished after counting its stacks (rather than found empty). */
+  finished?: boolean;
+}
+
 export function draftVariances(
   counts: CountFact[],
   xbs: XbsLine[],
   submittedStacks: { site: SiteCode; stack: string }[],
   thirdParty: Set<SiteCode>,
   siteShort: (s: SiteCode) => string,
+  emptySites: EmptySite[] = [],
 ): VarianceDraft[] {
   const lotKey = (site: SiteCode, stack: string, batch: string) => `${site}|${thirdParty.has(site) ? "" : stack}|${batch}`;
   const where = (l: XbsLine) => `${siteShort(l.wh)}${!thirdParty.has(l.wh) && l.z ? " " + l.z : ""}`;
@@ -85,6 +101,9 @@ export function draftVariances(
   for (const s of submittedStacks)
     if (!thirdParty.has(s.site)) for (const l of xbs) if (l.wh === s.site && l.z === s.stack) judge.add(lotKey(l.wh, s.stack, l.b));
   for (const [k, cs] of counted) if (cs.some((c) => submitted.has(`${c.site}|${c.stack}`))) judge.add(k);
+  // A site reported empty or finished: every lot XBS has there is judged (not counted = 0).
+  const emptyAt = new Map(emptySites.filter((e) => thirdParty.has(e.site)).map((e) => [e.site, e]));
+  for (const l of xbs) if (emptyAt.has(l.wh)) judge.add(lotKey(l.wh, "", l.b));
 
   const drafts: VarianceDraft[] = [];
   for (const k of judge) {
@@ -92,7 +111,10 @@ export function draftVariances(
     const cs = counted.get(k) ?? [];
     const expected = xbs.filter((l) => l.wh === site && l.b === batch && (thirdParty.has(site) || l.z === stackOrEmpty));
     const head = expected[0];
-    const stack = stackOrEmpty || cs[0]?.stack || "";
+    const mark = !cs.length ? emptyAt.get(site) : undefined;
+    const empty = mark && !mark.finished ? mark : undefined;
+    const notFound = mark?.finished ? mark : undefined;
+    const stack = stackOrEmpty || cs[0]?.stack || mark?.stack || "";
     const outturn = head?.o ?? cs[0]?.outturn ?? batch;
     const expectedUnits = expected.reduce((a, l) => a + l.u, 0);
     const expectedKg = expected.reduce((a, l) => a + l.kg, 0);
@@ -112,7 +134,10 @@ export function draftVariances(
 
     let cause: RootCause;
     let why: string;
-    if (people.length > 1) {
+    if (empty) {
+      cause = "Unposted gate-out";
+      why = `${siteShort(site)} was reported empty by ${empty.by}${empty.at ? ` at ${empty.at}` : ""}: "${empty.reason}". XBS still has ${plural(expectedUnits, "unit")} of ${outturn} here. If the bags left before the count date, post the gate-out in XBS; if after, it's a timing difference.`;
+    } else if (people.length > 1) {
       cause = "Duplicate entry";
       why = `${people.join(" and ")} each counted this lot here (${cs.map((c) => `${c.units} units at ${c.at}`).join(", ")}). XBS expects ${expectedUnits}.`;
     } else if (!expected.length && elsewhere.length) {
@@ -141,6 +166,8 @@ export function draftVariances(
       why = `${plural(d, "unit")} ${d < 0 ? "short" : "over"} with no matching movement, duplicate or split found. A blind recount will confirm it.`;
     }
 
+    if (notFound) why = `Not found at ${siteShort(site)}: ${notFound.by} finished the site${notFound.at ? ` at ${notFound.at}` : ""} without counting this lot. ${why}`;
+
     drafts.push({
       key: k,
       site,
@@ -155,8 +182,8 @@ export function draftVariances(
       cause,
       why,
       lineId: cs[0]?.lineId,
-      counter: people.join(", ") || "—",
-      at: cs[0]?.at ?? "",
+      counter: people.join(", ") || mark?.by || "—",
+      at: cs[0]?.at ?? mark?.at ?? "",
     });
   }
   return drafts;

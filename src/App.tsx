@@ -61,7 +61,7 @@ export const useNav = () => useContext(Nav);
 
 export default function App() {
   const store = useStore();
-  const [page, setPage] = useState<Page>("overview");
+  const [page, setPage] = useState<Page>(store.setup ? "import" : "overview");
   const [menu, setMenu] = useState(false);
   const go = (p: Page) => {
     setPage(p);
@@ -69,6 +69,7 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
+  const current = store.stockTakes[0];
   const pendingSheets = store.sheets.filter((s) => s.status === "Submitted").length;
   const openVar = store.variances.filter((v) => v.state === "open").length;
   const overdue = store.exceptions.filter((e) => e.status !== "Closed" && e.dueDays < 0).length;
@@ -158,11 +159,13 @@ export default function App() {
         </header>
 
         <aside className={"rail" + (menu ? " rail-open" : "")} aria-label="Main">
-          <button className="rail-st" onClick={() => go("stocktakes")}>
+          <button className="rail-st" onClick={() => go(current ? "stocktakes" : "import")}>
             <span className="rail-st-label">Current stock take</span>
-            <span className="rail-st-name">{store.stockTakes[0].type === "Monthly stock take" ? "Monthly" : "100%"} · {store.stockTakes[0].countDate.replace(/^\w+ /, "")}</span>
+            <span className="rail-st-name">
+              {current ? `${current.type === "Monthly stock take" ? "Monthly" : "100%"} · ${current.countDate.replace(/^\w+ /, "")}` : "None yet"}
+            </span>
             <span className="rail-st-row">
-              <span>{store.stockTakes[0].status}</span>
+              <span>{current?.status ?? "Import XBS to start"}</span>
               <span className="rail-st-day">
                 Day {TODAY.signOffDay}/{TODAY.signOffTarget}
               </span>
@@ -192,6 +195,25 @@ export default function App() {
         </aside>
 
         <main className="main">
+          {store.setup && (
+            <div className="callout callout-warn setup-banner" role="status">
+              <span>
+                <strong>No stock take yet.</strong> Start as at month-end: 1.{" "}
+                <button className="link" onClick={() => go("import")}>
+                  Import the XBS reports
+                </button>
+                , 2.{" "}
+                <button className="link" onClick={() => go("checks")}>
+                  review the pre-count checks
+                </button>
+                , 3.{" "}
+                <button className="link" onClick={() => go("stocktakes")}>
+                  start the stock take
+                </button>
+                . Counting, approvals and reconciliation open once it has started.
+              </span>
+            </div>
+          )}
           {screens[page]}
         </main>
 

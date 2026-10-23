@@ -282,6 +282,11 @@ textarea.input { resize: vertical; }
 .cause-tag { height: 24px; padding: 0 10px; border-radius: 999px; background: var(--page); font-size: 12px; font-weight: 600; line-height: 24px; }
 .cause-tag.unknown { background: none; box-shadow: inset 0 0 0 1px var(--hair); color: var(--ink-2); }
 .vdetail { position: sticky; top: calc(var(--topbar-h) + 20px); gap: 18px; }
+/* the decision buttons stay at the bottom of the window while the variance panel is on screen */
+.vactions { position: sticky; bottom: 0; z-index: 1; display: flex; flex-direction: column; gap: 8px; margin: auto -20px -20px; padding: 14px 20px 20px; background: var(--surface); border-top: 1px solid var(--hair); border-radius: 0 0 var(--r-lg) var(--r-lg); box-shadow: 0 -8px 16px -12px rgb(0 0 0 / 0.18); }
+.vactions .hint { margin: 0; }
+/* keep messages clear of the pinned decision buttons */
+body:has(.vactions) .toast { bottom: 104px; }
 .review-back { display: none; }
 .compare { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .compare > div { padding: 12px 14px; border-radius: var(--r-md); background: var(--page); }
@@ -407,3 +412,32 @@ textarea.input { resize: vertical; }
 .area-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .rule-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .load-bar { display: block; min-width: 140px; }
+
+/* set-up mode: no stock take yet */
+.setup-banner { margin-bottom: 16px; align-items: flex-start; }
+.setup-banner .link { font-weight: 600; }
+
+/* Variances: filter by cause */
+.cause-filter { margin: 4px 0 16px; }
+.cause-n { font-style: normal; font-size: 12px; font-weight: 700; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--brand-white); color: var(--ink-2); display: inline-grid; place-items: center; }
+.cause input:checked + span .cause-n { background: color-mix(in srgb, var(--brand-white) 22%, transparent); color: var(--brand-white); }
+.cause-sum { margin: 8px 0 0; }
+/* on the page background the chips need their own fill */
+.cause-filter .cause span { background: var(--brand-white); box-shadow: inset 0 0 0 1px var(--hair); }
+.cause-filter .cause span .cause-n { background: var(--page); }
+.cause-filter .cause input:checked + span { background: var(--brand-neumann-green); box-shadow: none; }
+.cause-filter .cause input:checked + span .cause-n { background: color-mix(in srgb, var(--brand-white) 22%, transparent); }
+
+/* Reconciliation: Comtras (BRIC) vs Ibero bridge */
+.bridge-table td:first-child { width: 60%; }
+.bridge-table tr.subtotal td { font-weight: 600; border-top: 1px solid var(--hair); }
+.bridge-table tr.total td { font-weight: 700; }
+.bridge-head td { padding-top: 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.bridge-item { display: inline-flex; align-items: center; gap: 6px; }
+.bridge-open td { color: var(--brand-neumann-red); }
+.bridge-closed td { color: var(--brand-neumann-green); }
+.bridge-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bridge-add .input { flex: 1 1 200px; min-width: 0; }
+.bridge-add .bridge-qty { flex: 0 0 110px; }
+.bridge-suggest { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--hair); }
+.icon-btn-sm { width: 24px; height: 24px; }

@@ -111,7 +111,8 @@ export interface XbsUpload {
 
 /** Reads the chosen .xlsx files in the browser. */
 export async function readXbsFiles(files: File[], sites: { code: SiteCode; name: string }[]): Promise<XbsUpload> {
-  const { readSheet } = await import("read-excel-file/browser");
+  // The worker-free build: the Power Apps player won't run Web Workers (see src/vendor/fflate-sync.ts).
+  const { readSheet } = await import("read-excel-file/universal");
   const reports: ParsedReport[] = [];
   for (const f of files) reports.push(parseReport(f.name, (await readSheet(f)) as Cell[][]));
   const types = new Set(reports.map((r) => r.type));

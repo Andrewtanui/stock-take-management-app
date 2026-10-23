@@ -352,6 +352,18 @@ let importN = 0;
 export const mockSource: DataSource = {
   kind: "mock",
   async load(): Promise<MgmtData> {
+    // Demo of a fresh environment (no import, no stock take yet): open the app with ?empty
+    if (new URLSearchParams(location.search).has("empty"))
+      return {
+        counts: [],
+        stacks: [],
+        reference: {
+          today: TODAY, lines: [], sites: SITES, imports: [], counters: [], hourly: [], countedBags: {}, directPurchases: [], users: USERS,
+          packTypes: PACK_TYPES, stockTakeGroups: [], contracts: { cancelled: [], shipped: [], stuffed: [] }, people: [], physDelta: {}, comtrasDelta: {},
+        },
+        stockTakes: [], sheets: [], allocation: { ...ALLOCATION, runs: [] }, variances: [], exceptions: [], changes: [], issues: [], audit: [],
+        setup: true,
+      };
     return {
       ...demoCounts(),
       reference: {
@@ -383,6 +395,11 @@ export const mockSource: DataSource = {
   },
   createStockTake: ok,
   closeStockTake: ok,
+  addReconItem: async () => `demo-recon-${Date.now()}`,
+  removeReconItem: ok,
+  async importComtras(upload, onProgress) {
+    onProgress?.(upload.lines.length, upload.lines.length);
+  },
   async importXbs(upload, onProgress) {
     onProgress?.(upload.lines.length, upload.lines.length);
     return `IMP-DEMO-${++importN}`;

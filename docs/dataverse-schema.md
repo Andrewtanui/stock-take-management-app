@@ -1,7 +1,9 @@
 # Dataverse schema — IBKY Stock Take
 
 Status: **live in the development environment** (built 9 Oct 2026, last changed
-12 Oct 2026). This document describes what exists in Dataverse today.
+19 Oct 2026) and copied to **NKG_Demo** (14 Oct; this week's additions applied there
+except `stk_stack` site flags, the Comtras columns and `stk_reconitem`, which follow
+with the next NKG update). This document describes what exists in Dataverse today.
 The source of truth is `scripts/dataverse/schema.mjs`; `npm run dv:schema`
 creates or extends the tables from it (it only adds, never drops).
 
@@ -18,7 +20,8 @@ flows react to changes in them.
 | Publisher | `IberoKenya` — "Ibero Kenya" · prefix **`stk`** · choice values start at **614500000** |
 | Auditing | Dataverse auditing on for every table (no custom audit log) |
 | Notes (photos) | Enabled on `stk_countline` and `stk_issue` |
-| Security roles | 7 `STK …` roles, see [security-roles.md](security-roles.md) |
+| Security roles | 7 `STK …` roles, see [security-roles.md](security-roles.md). Every user also needs the built-in **Basic User** role |
+| NKG copy | NKG_Demo · `61203bbf-8829-e6fd-bbdd-bb98d7fa1d56` · https://orged86d520.crm4.dynamics.com/ |
 
 ## How to look at it
 
@@ -55,40 +58,41 @@ flows react to changes in them.
 
 ## Tables at a glance
 
-Rows = what is in the dev environment on 13 Oct 2026 (test data).
+Rows = what is in the dev environment on 19 Oct 2026: the **August 2026 month-end
+replayed end to end** (Finance's XBS exports, P526 and 631-line count; see PLAN.md).
 
 | # | Table | Ownership | Written by | Read by | Rows |
 |---|---|---|---|---|---|
 | | **Reference & settings** | | | | |
 | 1 | `stk_site` Warehouse | Org | IT Admin | everyone | 6 |
 | 2 | `stk_packtype` Packing type | Org | IT Admin | everyone | 2 |
-| 3 | `stk_setting` Setting | Org | IT Admin | everyone | 13 |
+| 3 | `stk_setting` Setting | Org | IT Admin | everyone | 14 |
 | | **Source data (locked)** | | | | |
-| 4 | `stk_xbsimport` XBS import | Org | Importer (create; status by import only) | everyone | 2 |
-| 5 | `stk_xbsline` XBS line | Org | Importer (**create only**) | everyone | 2,292 |
-| 6 | `stk_comtrasposition` Comtras position | Org | Importer (**create only**) | mgmt roles | 0 |
+| 4 | `stk_xbsimport` XBS import | Org | Importer (create; status by import only) | everyone | 1 |
+| 5 | `stk_xbsline` XBS line | Org | Importer (**create only**) | everyone | 786 |
+| 6 | `stk_comtrasposition` Comtras position (P526) | Org | Importer (**create only**) | mgmt roles | 222 |
 | | **Mapping** | | | | |
 | 7 | `stk_basketmap` Basket mapping | Org | via approved change only | everyone | 38 |
 | 8 | `stk_outturnmap` Outturn mapping | Org | via approved change only | everyone | 0 |
-| 9 | `stk_mappingchange` Mapping change | User | Trading, Finance, Ops (request); Finance (decide) | mgmt roles | 1 |
+| 9 | `stk_mappingchange` Mapping change | User | Trading, Finance, Ops (request); Finance (decide) | mgmt roles | 0 |
 | | **Stock take** | | | | |
-| 10 | `stk_stocktake` Stock take | Org | Ops Admin | everyone | 2 |
-| 11 | `stk_assignment` Assignment | Org | Ops Admin | everyone (counters: own) | 2 |
-| 12 | `stk_countsheet` Count sheet | User (= counter) | Counter (create/submit); Ops/WH Mgr (decide) | counter: own; mgmt: all | 2 |
-| 13 | `stk_stack` Stack | Org | Counter (create/submit); Ops/WH Mgr | everyone | 9 |
-| 14 | `stk_countline` Count line | User (= counter) | Counter (own lines) | counters: all (for "already counted" warnings, never XBS figures); mgmt: all | 16 |
-| 15 | `stk_recount` Recount | User (= assignee) | Ops/WH Mgr (create); counter (complete) | assignee; mgmt | 5 |
+| 10 | `stk_stocktake` Stock take | Org | Ops Admin | everyone | 1 |
+| 11 | `stk_assignment` Assignment | Org | Ops Admin (published by the counter allocation) | everyone (counters: own) | 7 |
+| 12 | `stk_countsheet` Count sheet | User (= counter) | Counter (create/submit); Ops/WH Mgr (decide) | counter: own; mgmt: all | 7 |
+| 13 | `stk_stack` Stack | Org | Counter (create/submit/close a site); Ops/WH Mgr | everyone | 163 |
+| 14 | `stk_countline` Count line | User (= counter) | Counter (own lines) | counters: all (for "already counted" warnings, never XBS figures); mgmt: all | 789 |
+| 15 | `stk_recount` Recount | User (= assignee) | Ops/WH Mgr (create); counter (complete) | assignee; mgmt | 130 |
 | | **Reconcile & sign-off** | | | | |
-| 16 | `stk_variance` Variance | Org | Hub (generate); Ops/WH Mgr/Finance (decide) | mgmt roles | 12 |
-| 17 | `stk_exception` Exception | User (= owner) | mgmt roles, flows | mgmt roles | 27 |
-| 18 | `stk_signoff` Sign-off | Org | the gate's role | everyone | 4 |
+| 16 | `stk_variance` Variance | Org | Hub (generate); Ops/WH Mgr/Finance (decide) | mgmt roles | 686 |
+| 17 | `stk_exception` Exception | User (= owner) | mgmt roles, flows | mgmt roles | 15 |
+| 18 | `stk_signoff` Sign-off | Org | the gate's role | everyone | 0 |
+| 23 | `stk_reconitem` Reconciling item | Org | Finance, Ops Admin | mgmt roles | 8 |
+| | **Counter allocation** | | | | |
+| 21 | `stk_counterprofile` Counter profile | Org | Ops Admin, IT Admin | mgmt roles | 2 |
+| 22 | `stk_allocationrun` Allocation run | Org | Ops Admin | mgmt roles | 1 |
 | | **Other** | | | | |
-| 19 | `stk_directpurchase` Direct purchase | Org | Trading | mgmt roles | 1 |
-| 20 | `stk_issue` Problem report | User (= raiser) | Counter (create); Ops/IT (triage) | raiser: own; mgmt: all | 3 |
-
-The 2,292 XBS lines are two imports: the 2 Mar 2026 export (1,460 Warehouse +
-290 Blocked = 1,750) and the September 2026 month-end, rebuilt from Finance's
-workbook (484 + 58 = 542; see `scripts/xbs/rebuild-xbs-from-finance.mjs`).
+| 19 | `stk_directpurchase` Direct purchase | Org | Trading | mgmt roles | 0 |
+| 20 | `stk_issue` Problem report | User (= raiser) | Counter (create); Ops/IT (triage) | raiser: own; mgmt: all | 0 |
 
 Org-owned = shared data with no per-person ownership. User-owned = rows belong
 to a person, so "counters see only their own" is enforced by role depth (User
@@ -228,16 +232,27 @@ XBS can split one batch into several lines at the same zone; comparisons always
 add all lines of a batch at a place. Old imports stay (Superseded) for history.
 
 ### 6. `stk_comtrasposition` — Comtras position (locked)
+One row per contract line of the Comtras **P526** long/short report, loaded once per
+stock take on the Hub's import page (`src/data/comtras-parse.ts`).
+
 | Column | Type | Notes |
 |---|---|---|
-| `stk_name` PK | Text 100 | "10070 AB/PB FAQ @ 2026-03-02" |
-| `stk_snapshotdate` | Date | |
-| `stk_basketcode` | Text 10 | Secondary basket |
-| `stk_bags` | Decimal (2) | Net of 537 sales relief |
+| `stk_name` PK | Text 100 | "Inventory 90523 10057" (line type, contract, quality code) |
+| `stk_stocktake` | Lookup | The stock take it reconciles (added 18 Oct) |
+| `stk_linetype` | Text 20 | `Inventory` · `Longs` · `Short` |
+| `stk_contract` | Text 20 | Comtras contract number (`Ctr.No.`) |
+| `stk_origin` | Text 60 | `Arabica Kenya`, `Arabica Ethiopia` |
+| `stk_counterparty` | Text 60 | Comtras matchcode (e.g. `NKG BERO I`, `IAC USA`) |
+| `stk_basketcode` | Text 10 | Comtras quality code (`QualCode`). Matches our secondary basket codes where they're the same basket; 10057 and 10027 aren't in the mapping |
+| `stk_bags` | Decimal (2) | 60 kg bags |
+| `stk_kg` | Decimal (2) | |
+| `stk_snapshotdate` | Date | Load date |
 | `stk_source` | Text 200 | File name |
 
-**Empty.** Waiting for a real Comtras/BRIC extract; reconciliation shows no
-Comtras figures until then (it never copies XBS).
+**Finance's "Total BRIC (Comtras)"** = `Arabica Kenya` Inventory + Longs
+(August 2026: 62,060.70 + 2,631.07 = 64,691.77). Other origins and Shorts are kept
+but not part of it. The P526's 60 kg column is spelt differently between exports
+("60Kg Bags" / "60 Kgs Bag"); the parser accepts both.
 
 ### 7. `stk_basketmap` — Basket mapping (secondary → primary)
 | Column | Type | Notes |
@@ -320,7 +335,14 @@ One per stock take × site × stack code. At Ibero the codes are bay locations
 | `stk_landmark` | Text 200 | Third parties |
 | `stk_status` | `stk_stackstatus` | Submitting a stack is what makes its lots comparable |
 | `stk_submittedby` / `stk_submittedon` | Lookup / Date & time | |
-| `stk_comment` | Multiline 2000 | |
+| `stk_comment` | Multiline 2000 | Reason, for a site reported empty |
+| `stk_nothinghere` | Yes/No | Third-party site reported **empty** by its counter (added 18 Oct) |
+| `stk_sitefinished` | Yes/No | Third-party site **finished**: every stack counted (added 19 Oct) |
+
+Third-party sites are closed with one marker stack named `Whole site` flagged
+`stk_nothinghere` or `stk_sitefinished`. Once closed, every XBS lot at that site that
+nobody counted is judged as counted 0 (variance rules). Until then, lots nobody
+counted aren't variances.
 
 ### 14. `stk_countline` — Count line
 One per outturn counted at a stack. **Notes enabled**: the tag photo is an
@@ -476,6 +498,22 @@ Audit record of one random allocation of counters to areas.
 `stk_assignment` gained `stk_sections` (Text 400, e.g. `D1-7,D8-14,C/D`; empty = use `stk_rows`),
 `stk_plannedbags` (Whole number) and `stk_allocationrun` (Lookup).
 
+### 23. `stk_reconitem` — Reconciling item (added 19 Oct 2026)
+Finance's bridge from the Comtras (BRIC) total to the Ibero stock position, per stock
+take: coffee afloat and the reconciling items. The Reconciliation page works out
+Total Ibero, the difference and what is still unexplained (Finance's "franchise").
+
+| Column | Type | Notes |
+|---|---|---|
+| `stk_name` PK | Text 200 | "Kenyan longs", "KCCE/MAXA/MC/NKPCU Sale 37" |
+| `stk_stocktake` | Lookup (required) | |
+| `stk_kind` | Choice: Coffee afloat · Reconciling item | |
+| `stk_bags` | Decimal (2) | 60 kg bags; positive = BRIC has it, the warehouses don't |
+| `stk_inxbs` | Yes/No | Also counts in the XBS column (afloat, Kenyan longs) |
+| `stk_note` | Multiline 2000 | |
+
+August 2026 replay: Finance's 8 items reproduce the signed page (unexplained (592)).
+
 ## Relationships (summary)
 
 ```
@@ -490,6 +528,10 @@ stk_variance  1─* stk_exception *─0..1 stk_xbsimport
 stk_stocktake 1─* stk_signoff
 stk_mappingchange 1─* stk_basketmap / stk_outturnmap          (last change)
 stk_countline, stk_issue 1─* annotation (photos)
+stk_stocktake 1─* stk_comtrasposition
+stk_stocktake 1─* stk_reconitem
+stk_stocktake 1─* stk_allocationrun 1─* stk_assignment
+stk_counterprofile *─1 systemuser
 ```
 
 Delete behaviour: **Restrict** everywhere (nothing cascades). Records are
@@ -500,10 +542,10 @@ closed/superseded, not deleted.
 | Role | Key rights |
 |---|---|
 | **STK Counter** | Read reference + XBS lines (Org) and assignments. Create/Write stacks; own count sheets, count lines, problem reports and their photo notes (User); read all count lines (duplicate warnings). Read/Write own recounts. No variances. |
-| **STK Operations Admin** | Stock takes, assignments, sheet decisions, variances, exceptions (Org). Request mapping changes. Sign Operations gate. |
+| **STK Operations Admin** | Stock takes, assignments, counter profiles and allocation runs, sheet decisions, variances, exceptions, reconciling items (Org). Request mapping changes. Sign Operations gate. |
 | **STK Warehouse Manager** | Sheet decisions, variances (Org). Sign Warehouse gate. |
 | **STK Trading** | Direct purchases, exceptions, mapping requests. Sign Trading gate. |
-| **STK Finance** | Decide mapping changes, variances. Sign Finance gate. |
+| **STK Finance** | Decide mapping changes, variances. Reconciling items (create/edit/delete). Sign Finance gate. |
 | **STK IT Admin** | Sites, pack types, settings, users. |
 | **STK Importer** | **Create only** on `stk_xbsline`, `stk_comtrasposition`; Create + Write on `stk_xbsimport`. Given with Ops Admin and IT Admin. |
 
@@ -521,15 +563,18 @@ apps; proving the role lock itself needs a non-admin test user (Stage 5).
 | F5 | `stk_signoff` created | `stk_stocktake.stk_status` → Completed; deletes a Finance sign-off made by the preparer (separation of duties on) |
 | F6 | `stk_mappingchange` created | `stk_mappingchange.stk_state`, `stk_basketmap` / `stk_outturnmap` |
 
-F2, F3a, F3b, F7a–c and F8 only read and notify (Teams / email). Flow
+F2, F3a, F3b, F7a–c, F8 and F9 (allocation published → each counter's area in Teams)
+only read and notify (Teams / email). Flow
 definitions: `scripts/dataverse/flows.mjs`.
 
 ## Open points
 
 1. **Stock take ↔ warehouse (N:N):** not written yet; every stock take covers
    all warehouses.
-2. **Assignments:** no Hub screen yet; created in Dataverse.
-3. **Comtras:** table empty until a real extract is shared.
+2. **Comtras quality codes 10057 and 10027** (most of BRIC's Kenya stock) aren't
+   secondary baskets in the mapping: compared in total only until Trading maps them.
+3. **Coffee afloat** is entered by hand in `stk_reconitem` until the shipment
+   tracker is a data source (or it's derived from P526 Shorts + XBS shipped report).
 4. **Basket mapping:** Minus / Natural fix waiting for Trade & QC's document.
 5. **100% zero-out counts** (issuing → receiving team) are not modelled; they
    would add a receiving-side count line.

@@ -2,6 +2,8 @@
 // Two implementations: ./mock (demo data in the browser) and ./dataverse (the
 // IBKY Stock Take tables). Pick one with VITE_DATA=mock|dataverse.
 
+import type { ReconItem } from "../types";
+import type { ComtrasLine, ComtrasUpload } from "../comtras-parse";
 import type { AllocRules, Plan } from "../allocate";
 import type {
   AllocationChange,
@@ -57,6 +59,8 @@ export interface Reference {
   /** Sample physical and Comtras differences until count lines and the Comtras extract are connected. */
   physDelta: Record<string, number>;
   comtrasDelta: Record<string, number>;
+  /** The Comtras (BRIC) position loaded for the active stock take, if any. */
+  comtras?: ComtrasPosition;
 }
 
 /** Everything the management app works with after start-up. */
@@ -78,6 +82,14 @@ export interface MgmtData {
   audit: AuditEntry[];
   /** Counter profiles, allocation runs and rules for the random counter allocation. */
   allocation?: AllocationData;
+  /** The BRIC bridge for the active stock take: coffee afloat and reconciling items. */
+  reconItems?: ReconItem[];
+  /**
+   * Set-up mode: there's no stock take yet (a fresh environment). The Hub opens on
+   * XBS import; the pre-count checks read the latest import; starting the first
+   * stock take reloads into normal mode.
+   */
+  setup?: boolean;
 }
 
 export interface AllocationData {
@@ -118,6 +130,10 @@ export interface DataSource {
   closeStockTake(id: string, comment: string): Promise<void>;
   /** Stores the upload as a new locked import; returns its name. */
   importXbs(upload: XbsUploadToSave, onProgress?: (done: number, total: number) => void): Promise<string>;
+  addReconItem(item: ReconItem): Promise<string>;
+  removeReconItem(id: string): Promise<void>;
+  /** Stores the Comtras P526 position for the active stock take (locked: once per stock take). */
+  importComtras(upload: ComtrasUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
   decideSheet(id: string, status: SheetStatus, comment: string): Promise<void>;
   /** `to`: who does a blind recount (a different counter); defaults to whoever counted. */
   decideVariance(id: string, state: Variance["state"], cause: RootCause, to?: { id: string; name: string }): Promise<void>;
@@ -137,4 +153,13 @@ export interface DataSource {
   addSignoff(gate: Role, action: "signed" | "sent back", comment: string): Promise<void>;
   /** A photo's bytes, fetched only when someone opens it. */
   photo(id: string): Promise<{ mime: string; base64: string }>;
+}
+
+/** The Comtras P526 report as loaded for a stock take. */
+export interface ComtrasPosition {
+  file: string;
+  /** When it was loaded. */
+  at: string;
+  by: string;
+  lines: ComtrasLine[];
 }

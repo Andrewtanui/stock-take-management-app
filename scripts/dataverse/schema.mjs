@@ -157,7 +157,14 @@ export const TABLES = [
       ["stk_basketcode", "Basket code", s(10)],
       ["stk_bags", "Bags", dec(2)],
       ["stk_source", "Source file", s(200)],
+      // From the Comtras P526 report (one row per contract line):
+      ["stk_linetype", "Line type", s(20)], // Inventory · Longs · Short
+      ["stk_contract", "Contract", s(20)],
+      ["stk_origin", "Origin", s(60)], // e.g. Arabica Kenya
+      ["stk_counterparty", "Counterparty", s(60)],
+      ["stk_kg", "Kg", dec(2)],
     ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake"]],
   },
   {
     name: "stk_mappingchange", display: "Mapping change", plural: "Mapping changes", own: "user", primary: ["Reference", 30],
@@ -218,6 +225,18 @@ export const TABLES = [
     keys: [["stk_user"]],
   },
   {
+    // Finance's bridge from the Comtras (BRIC) total to the Ibero stock position: coffee afloat and the
+    // reconciling items (deliveries after the count, longs, broker's account…), per stock take.
+    name: "stk_reconitem", display: "Reconciling item", plural: "Reconciling items", own: "org", primary: ["Item", 200],
+    cols: [
+      ["stk_kind", "Kind", local("Coffee afloat", "Reconciling item")],
+      ["stk_bags", "Bags (60 kg)", dec(2)],
+      ["stk_inxbs", "Also in the XBS column", bool()],
+      ["stk_note", "Note", memo(2000)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+  },
+  {
     name: "stk_allocationrun", display: "Allocation run", plural: "Allocation runs", own: "org", primary: ["Reference", 30],
     cols: [
       ["stk_status", "Status", local("Draft", "Published", "Superseded")],
@@ -276,6 +295,10 @@ export const TABLES = [
       ["stk_status", "Status", choice("stk_stackstatus")],
       ["stk_submittedon", "Submitted on", dt()],
       ["stk_comment", "Comment", memo(2000)],
+      // A third-party site the counter found empty (no lines; the comment says why). Its XBS lots count as 0.
+      ["stk_nothinghere", "Nothing to count", bool()],
+      // The counter finished a third-party site: every XBS lot there that wasn't counted counts as 0.
+      ["stk_sitefinished", "Site finished", bool()],
     ],
     lookups: [
       ["stk_stocktake", "Stock take", "stk_stocktake", true],

@@ -3,6 +3,7 @@
 // data source (mock or Dataverse, see ./source) and handed to setReference();
 // screens never read the JSON or call Dataverse directly.
 
+import type { ComtrasPosition } from "./source/types";
 import type {
   BasketMap,
   Check,
@@ -40,6 +41,7 @@ export function setReference(r: Reference) {
   STUFFED_28FEB = new Set(r.contracts.stuffed);
   PHYS_DELTA = r.physDelta;
   COMTRAS_DELTA = r.comtrasDelta;
+  COMTRAS = r.comtras;
   GRADES = [...new Set(lines.map((l) => l.i))].sort();
 }
 
@@ -71,6 +73,7 @@ export const CHAIN: { role: Role; title: string; signs: string }[] = [
 export const PERMISSIONS: { area: string; can: Role[] }[] = [
   { area: "Create and close stock takes", can: ["Operations Admin"] },
   { area: "Allocate counters", can: ["Operations Admin"] },
+  { area: "Reconciling items", can: ["Finance", "Operations Admin"] },
   { area: "Counter profiles", can: ["Operations Admin", "IT Admin"] },
   { area: "Import XBS stock", can: ["Operations Admin", "IT Admin"] },
   { area: "Approve or reject count sheets", can: ["Operations Admin", "Warehouse Manager"] },
@@ -97,12 +100,16 @@ export function addImport(x: XbsImport) {
 }
 
 /** Checks run on an XBS upload (default: the loaded snapshot) before it becomes expected stock. */
-export function importChecks(src: XbsLine[] = lines, unknownWarehouses: string[] = []): ImportCheck[] {
+/** `knownBaskets`: secondary basket codes in the mapping table; codes outside it can't be reconciled against Comtras. */
+export function importChecks(src: XbsLine[] = lines, unknownWarehouses: string[] = [], knownBaskets?: string[]): ImportCheck[] {
   const lines = src;
   const W = lines.filter((l) => l.t === "W");
   const B = lines.filter((l) => l.t === "B");
   const badWarrant = W.filter((l) => l.wr && !WARRANT_RE.test(l.wr));
   const noBasket = lines.filter((l) => !l.bc);
+  const mapped = knownBaskets && new Set(knownBaskets);
+  const unmapped = mapped ? lines.filter((l) => l.bc && !mapped.has(l.bc)) : [];
+  const unmappedCodes = [...new Set(unmapped.map((l) => `${l.bc}${l.bn ? ` ${l.bn}` : ""}`))];
   const remnants = W.filter((l) => l.bg === 0);
   const noLoc = lines.filter((l) => site(l.wh).thirdParty === false && (!l.z || l.z === "TEMP-0-0"));
   // A true duplicate is an identical row. XBS also splits some batches into
@@ -146,6 +153,7 @@ export function importChecks(src: XbsLine[] = lines, unknownWarehouses: string[]
         ? `${dupes.length} rows appear twice, identical in every field.`
         : `No identical rows. ${multi.size} batches have more than one XBS line at the same location; the counter app shows each as one lot.`,
       rows: dupes.slice(0, 20).map((l) => ({ ref: l.o, info: where(l) })),
+      count: dupes.length,
     },
     {
       id: "pack",
@@ -153,13 +161,24 @@ export function importChecks(src: XbsLine[] = lines, unknownWarehouses: string[]
       result: kgOff.length ? "warn" : "pass",
       detail: kgOff.length ? `${kgOff.length} rows don't divide into either pack size.` : "Every row is bags × 60 or bags × 50 plus pockets.",
       rows: kgOff.slice(0, 20).map((l) => ({ ref: l.o, info: `${l.bg} bags, ${l.kg} kg` })),
+      count: kgOff.length,
     },
     {
       id: "basket",
       label: "Every outturn maps to a basket",
-      result: noBasket.length ? "warn" : "pass",
-      detail: `${noBasket.length} rows have no secondary basket. They can't be reconciled against Comtras until mapped.`,
-      rows: noBasket.map((l) => ({ ref: l.o, info: `${l.i} · ${where(l)}` })),
+      result: noBasket.length || unmapped.length ? "warn" : "pass",
+      detail:
+        [
+          noBasket.length ? `${noBasket.length} rows have no secondary basket.` : "",
+          unmapped.length ? `${unmapped.length} rows use ${unmappedCodes.length} basket${unmappedCodes.length === 1 ? "" : "s"} not in the mapping (${unmappedCodes.join("; ")}).` : "",
+        ]
+          .filter(Boolean)
+          .join(" ") + (noBasket.length || unmapped.length ? " They can't be reconciled against Comtras until mapped." : "Every row's secondary basket is in the mapping."),
+      rows: [
+        ...noBasket.map((l) => ({ ref: l.o, info: `${l.i} · ${where(l)} · no basket` })),
+        ...unmapped.map((l) => ({ ref: l.o, info: `${l.bc} ${l.bn ?? ""} · not in the mapping` })),
+      ],
+      count: noBasket.length + unmapped.length,
     },
     {
       id: "warrant",
@@ -167,6 +186,7 @@ export function importChecks(src: XbsLine[] = lines, unknownWarehouses: string[]
       result: badWarrant.length ? "warn" : "pass",
       detail: `${badWarrant.length} warrants aren't W + date + 3 characters, so tags can't be matched.`,
       rows: badWarrant.slice(0, 40).map((l) => ({ ref: l.o, info: l.wr! })),
+      count: badWarrant.length,
     },
     {
       id: "loc",
@@ -306,6 +326,13 @@ export function outturnMap() {
 let PHYS_DELTA: Record<string, number> = {};
 /** Comtras differences by secondary basket (Comtras − XBS, bags): samples until the Comtras extract is connected. */
 let COMTRAS_DELTA: Record<string, number> = {};
+let COMTRAS: ComtrasPosition | undefined;
+/** The Comtras (BRIC) position loaded for the active stock take, if any. */
+export const comtrasPosition = () => COMTRAS;
+/** After a P526 is loaded, so the reconciliation uses it without a reload. */
+export function setComtrasPosition(p: ComtrasPosition) {
+  COMTRAS = p;
+}
 /** Comtras minus XBS per secondary basket; empty until a Comtras extract is loaded. */
 export const comtrasDelta = () => COMTRAS_DELTA;
 

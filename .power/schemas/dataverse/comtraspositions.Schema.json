@@ -280,6 +280,37 @@
           "required": true,
           "x-ms-keyType": "primary"
         },
+        "stk_contract": {
+          "type": "string",
+          "title": "Contract",
+          "x-ms-dataverse-attribute": "stk_contract",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_contract",
+          "maxLength": 20
+        },
+        "stk_counterparty": {
+          "type": "string",
+          "title": "Counterparty",
+          "x-ms-dataverse-attribute": "stk_counterparty",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_counterparty",
+          "maxLength": 60
+        },
+        "stk_kg": {
+          "type": "string",
+          "title": "Kg",
+          "x-ms-dataverse-attribute": "stk_kg",
+          "x-ms-dataverse-type": "DecimalType",
+          "x-ms-schema-name": "stk_kg"
+        },
+        "stk_linetype": {
+          "type": "string",
+          "title": "Line type",
+          "x-ms-dataverse-attribute": "stk_linetype",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_linetype",
+          "maxLength": 20
+        },
         "stk_name": {
           "type": "string",
           "title": "Name",
@@ -289,6 +320,14 @@
           "x-ms-dataverse-primary-name": true,
           "required": true,
           "maxLength": 100
+        },
+        "stk_origin": {
+          "type": "string",
+          "title": "Origin",
+          "x-ms-dataverse-attribute": "stk_origin",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_origin",
+          "maxLength": 60
         },
         "stk_snapshotdate": {
           "type": "string",
@@ -304,6 +343,26 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "stk_source",
           "maxLength": 200
+        },
+        "stk_stocktake": {
+          "type": "string",
+          "title": "Stock take",
+          "x-ms-dataverse-attribute": "stk_stocktake",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "stk_stocktake",
+          "x-ms-dataverse-navigation-properties": [
+            "stk_stocktake"
+          ]
+        },
+        "stk_stocktakename": {
+          "type": "string",
+          "title": "stk_stocktakename",
+          "x-ms-dataverse-attribute": "stk_stocktakename",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_stocktakeName",
+          "x-ms-dataverse-attribute-of": "stk_stocktake",
+          "x-ms-read-only": true,
+          "maxLength": 100
         },
         "timezoneruleversionnumber": {
           "type": "string",

@@ -47,7 +47,10 @@ const totalOf = (rows: Row[], label: string, keys: string[]): Row => {
   for (const k of keys) t[k] = rows.reduce((s, r) => s + (typeof r[k] === "number" ? (r[k] as number) : 0), 0);
   return t;
 };
-const lotKey = (c: { site: string; stack: string; batch: string }) => `${c.site}|${c.stack}|${c.batch}`;
+// A lot is one batch on one Ibero stack, but the whole site at a third party (no stack locations in XBS),
+// as in variance-rules.ts - so a recount there replaces the lot's lines on every stack at the site.
+const lotKey = (c: { site: string; stack: string; batch: string }) =>
+  `${c.site}|${SITES.find((s) => s.code === c.site)?.thirdParty ? "" : c.stack}|${c.batch}`;
 
 /** Counts as they stand: a recount replaces earlier lines of the same lot. */
 export function currentCounts(counts: CountRow[]): CountRow[] {
@@ -76,6 +79,8 @@ export function comparable(input: { stacks: StackInfo[] }, counts: CountRow[]) {
   const done = new Set(input.stacks.filter((s) => s.status !== "In progress").map((s) => `${s.site}|${s.name}`));
   const counted = countedSites(counts);
   const thirdParty = new Set(SITES.filter((s) => s.thirdParty).map((s) => s.code));
+  // A third-party site reported empty is counted: everything XBS has there is compared with 0.
+  for (const s of input.stacks) if (s.empty && s.status !== "In progress") counted.add(s.site);
   // An outturn counted on a stack compares with its XBS line on that stack only;
   // its lines on stacks not counted yet wait for those stacks.
   const countedHere = new Set(counts.map((c) => `${c.site}|${c.stack}|${c.outturn}`));

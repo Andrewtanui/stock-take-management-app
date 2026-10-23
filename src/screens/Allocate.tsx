@@ -29,7 +29,13 @@ export default function Allocate() {
           ["profiles", "Counter profiles", profiles.length],
         ]}
       />
-      {tab === "allocate" ? <AllocateTab /> : <ProfilesTab />}
+      {tab === "profiles" ? (
+        <ProfilesTab />
+      ) : store.setup ? (
+        <p className="empty">Start the stock take first (Stock takes › New stock take); counters are allocated on it. Counter profiles can be set up now.</p>
+      ) : (
+        <AllocateTab />
+      )}
     </div>
   );
 }

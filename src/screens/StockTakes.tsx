@@ -10,7 +10,7 @@ const TONE: Record<string, Tone> = { "Count in progress": "info", Reconciliation
 export default function StockTakes() {
   const store = useStore();
   const [filter, setFilter] = useState<"all" | "mine" | "open">("all");
-  const [sel, setSel] = useState(store.stockTakes[0].id);
+  const [sel, setSel] = useState(store.stockTakes[0]?.id ?? "");
   const [creating, setCreating] = useState(false);
   const [closing, setClosing] = useState(false);
   const allowed = can(store.role, "Create and close stock takes");
@@ -47,7 +47,7 @@ export default function StockTakes() {
         <ul className="cards">
           {list.map((s) => (
             <li key={s.id}>
-              <button className="card card-btn" aria-pressed={s.id === st.id} onClick={() => setSel(s.id)}>
+              <button className="card card-btn" aria-pressed={s.id === st?.id} onClick={() => setSel(s.id)}>
                 <div className="row-between">
                   <strong>{s.title}</strong>
                   <Chip tone={TONE[s.status]}>{s.status}</Chip>
@@ -67,6 +67,11 @@ export default function StockTakes() {
           {!list.length && <li className="empty">No stock takes here.</li>}
         </ul>
 
+        {!st ? (
+          <section className="panel">
+            <p className="empty">No stock take yet. Import the XBS reports, review the pre-count checks, then start one with New stock take.</p>
+          </section>
+        ) : (
         <section className="panel">
           <h2 className="h3">{st.title}</h2>
           <dl className="kv">
@@ -96,6 +101,7 @@ export default function StockTakes() {
             </>
           )}
         </section>
+        )}
       </div>
 
       {creating && <NewStockTake onClose={() => setCreating(false)} />}
@@ -110,8 +116,10 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
   const [all, setAll] = useState(true);
   const [sites, setSites] = useState<SiteCode[]>(SITES.map((s) => s.code));
   const usable = IMPORTS.filter((i) => i.status === "Imported" || i.status === "Validated");
-  const [imp, setImp] = useState(usable[0].id);
-  const date = new Date().toLocaleDateString("en-GB");
+  const [imp, setImp] = useState(usable[0]?.id ?? "");
+  // The count day (month-end), not necessarily today: the stock take is dated by when the bags are counted.
+  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const date = day ? day.split("-").reverse().join("/") : "";
   const title = `${type === "Monthly stock take" ? "Monthly" : "100%"} Stock Take - ${date}`;
   const chosen = all ? SITES.map((s) => s.code) : sites;
 
@@ -133,6 +141,11 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
         )}
       </fieldset>
       <label className="field">
+        <span className="field-label">Count date</span>
+        <input className="input" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+        <span className="hint">The day the bags are counted, usually the last day of the month.</span>
+      </label>
+      <label className="field">
         <span className="field-label">Expected stock (XBS import)</span>
         <select className="input" value={imp} onChange={(e) => setImp(e.target.value)}>
           {usable.map((i) => (
@@ -141,7 +154,9 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
             </option>
           ))}
         </select>
-        <span className="hint">Only imports that passed the checks are listed. Upload a newer one in XBS import.</span>
+        <span className="hint">
+          {usable.length ? "Only imports that passed the checks are listed. Upload a newer one in XBS import." : "No XBS import yet. Import the XBS reports first."}
+        </span>
       </label>
       <fieldset className="field">
         <legend className="field-label">Warehouses</legend>
@@ -177,7 +192,7 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
         </button>
         <button
           className="btn btn-primary"
-          disabled={!chosen.length}
+          disabled={!chosen.length || !imp || !day}
           onClick={() => {
             store.createStockTake({
               id: `ST-${Date.now().toString().slice(-6)}`,

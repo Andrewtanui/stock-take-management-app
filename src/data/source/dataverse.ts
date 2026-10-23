@@ -21,6 +21,10 @@ import type { IOperationResult } from "@microsoft/power-apps/data";
 import type { IGetAllOptions } from "../../generated/models/CommonModels";
 import { AuditsService } from "../../generated/services/AuditsService";
 import { Stk_assignmentsService } from "../../generated/services/Stk_assignmentsService";
+import { Stk_comtraspositionsService } from "../../generated/services/Stk_comtraspositionsService";
+import { Stk_reconitemsService } from "../../generated/services/Stk_reconitemsService";
+import { Stk_reconitemsstk_kind } from "../../generated/models/Stk_reconitemsModel";
+import type { ComtrasLineType, ComtrasUpload } from "../comtras-parse";
 import { Stk_allocationrunsService } from "../../generated/services/Stk_allocationrunsService";
 import { Stk_counterprofilesService } from "../../generated/services/Stk_counterprofilesService";
 import { Stk_allocationrunsstk_status } from "../../generated/models/Stk_allocationrunsModel";
@@ -63,7 +67,7 @@ import {
   Stk_exceptionsstk_source,
   Stk_exceptionsstk_status,
 } from "../../generated/models/Stk_exceptionsModel";
-import { draftVariances, type CountFact } from "../variance-rules";
+import { draftVariances, type CountFact, type EmptySite } from "../variance-rules";
 import type {
   AuditEntry,
   BasketMap,
@@ -82,6 +86,7 @@ import type {
   MappingChange,
   PrimaryBasket,
   Issue,
+  ReconItem,
   RootCause,
   SheetStatus,
   Site,
@@ -94,7 +99,8 @@ import type {
   XbsLine,
 } from "../types";
 import type { AllocationData, DataSource, MgmtData, Signature, Today, XbsUploadToSave } from "./types";
-import { assignmentFor, type AllocRules, type Plan } from "../allocate";
+import { assignmentFor, pickRecounter, type AllocCounter, type AllocRules, type Plan } from "../allocate";
+import { AUTO_DEFAULTS, planAutoDecisions, type AutoSettings, type AutoVariance } from "../auto-decide";
 import { sectionList, sectionRows, sectionsWords } from "../../shared/sections";
 import { MATCH_TOLERANCE_KG } from "../../shared/count-rules";
 import { CHAIN, SITES } from "../repository";
@@ -240,6 +246,9 @@ async function signedInUser(): Promise<{ id: string; fullName?: string }> {
 
 /* ---------- load ---------- */
 
+/** Stands in for the stock take id in set-up mode: matches no rows. */
+const NO_STOCK_TAKE = "00000000-0000-0000-0000-000000000000";
+
 async function load(): Promise<MgmtData> {
   ids.me = (await signedInUser()).id;
 
@@ -250,8 +259,14 @@ async function load(): Promise<MgmtData> {
     all((o) => Stk_settingsService.getAll(o), { select: ["stk_name", "stk_value"] }, "read settings"),
     all((o) => Stk_xbsimportsService.getAll(o), { select: ["stk_xbsimportid", "stk_name", "stk_snapshotat", "stk_filenames", "stk_rowcount", "stk_status", "stk_failcount", "stk_warningcount", "_stk_importedby_value", "createdon"], orderBy: ["createdon desc"] }, "read XBS imports"),
   ]);
-  if (!stockTakeRows.length) throw new Error("There are no stock takes yet. Create one, or run the seed script.");
-  const active = stockTakeRows.find((r) => label(Stk_stocktakesstk_status, r.stk_status) !== "Completed") ?? stockTakeRows[0];
+  // No stock take yet (a fresh environment): open in set-up mode. A placeholder id makes every
+  // stock-take query return nothing; the pre-count checks read the latest usable import.
+  const setup = !stockTakeRows.length;
+  const latestImport = importRows.find((r) => ["Imported", "Validating"].includes(label(Stk_xbsimportsstk_status, r.stk_status) ?? ""));
+  const active =
+    stockTakeRows.find((r) => label(Stk_stocktakesstk_status, r.stk_status) !== "Completed") ??
+    stockTakeRows[0] ??
+    ({ stk_stocktakeid: NO_STOCK_TAKE, stk_name: "", _stk_import_value: latestImport?.stk_xbsimportid ?? NO_STOCK_TAKE } as (typeof stockTakeRows)[number]);
   ids.stockTakeId = active.stk_stocktakeid;
   ids.preparedBy = (active as unknown as { _stk_preparedby_value?: string })._stk_preparedby_value;
   for (const r of stockTakeRows) ids.stockTake.set(r.stk_name, r.stk_stocktakeid);
@@ -310,10 +325,31 @@ async function load(): Promise<MgmtData> {
   }));
 
   // Count work on the active stock take.
+  // The Comtras (BRIC) position loaded for this stock take, if any.
+  const comtrasRows = await all(
+    (o) => Stk_comtraspositionsService.getAll(o),
+    {
+      select: ["stk_name", "stk_basketcode", "stk_bags", "stk_kg", "stk_linetype", "stk_contract", "stk_origin", "stk_counterparty", "stk_source", "createdon", "_createdby_value"] as never,
+      filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`,
+    },
+    "read the Comtras position",
+  );
+  const reconRows = await all(
+    (o) => Stk_reconitemsService.getAll(o),
+    { select: ["stk_reconitemid", "stk_name", "stk_kind", "stk_bags", "stk_inxbs", "stk_note", "createdon", "_createdby_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`, orderBy: ["createdon asc"] },
+    "read the reconciling items",
+  );
   const [sheetRows, assignmentRows, stackRows, recountRows] = await Promise.all([
     all((o) => Stk_countsheetsService.getAll(o), { select: ["stk_countsheetid", "stk_name", "stk_status", "stk_submittedon", "stk_countercomment", "stk_decisioncomment", "stk_linecount", "stk_variancecount", "stk_bags", "_stk_site_value", "_stk_assignment_value", "_stk_stocktake_value", "_createdby_value"] }, "read count sheets"),
     all((o) => Stk_assignmentsService.getAll(o), { select: ["stk_assignmentid", "stk_rows", "stk_sections", "_stk_site_value", "_stk_counter_value", "_stk_stocktake_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid} and statecode eq 0` }, "read assignments"),
-    all((o) => Stk_stacksService.getAll(o), { select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value"], filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read stacks"),
+    all(
+      (o) => Stk_stacksService.getAll(o),
+      {
+        select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value", "stk_nothinghere", "stk_sitefinished", "stk_comment", "stk_submittedon", "_stk_submittedby_value"] as never,
+        filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`,
+      },
+      "read stacks",
+    ),
     all((o) => Stk_recountsService.getAll(o), { select: ["stk_recountid", "stk_name", "stk_batch", "stk_status", "_stk_stack_value", "_ownerid_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` }, "read recounts"),
   ]);
   const activeSheets = sheetRows.filter((r) => r._stk_stocktake_value === active.stk_stocktakeid);
@@ -355,6 +391,8 @@ async function load(): Promise<MgmtData> {
     ...sheetRows.map((r) => r._createdby_value),
     ...assignmentRows.map((r) => r._stk_counter_value),
     ...countRows.map((r) => r._createdby_value),
+    ...reconRows.map((r) => (r as { _createdby_value?: string })._createdby_value),
+    ...(stackRows as unknown as { _stk_submittedby_value?: string }[]).map((r) => r._stk_submittedby_value),
     ...issueRows.flatMap((r) => [r._createdby_value, r._stk_assignedto_value]),
   ]);
   const nm = (id?: string) => (id ? (who.get(id) ?? "Someone") : "");
@@ -386,14 +424,53 @@ async function load(): Promise<MgmtData> {
     recount: recountName.get((c as { _stk_recount_value?: string })._stk_recount_value ?? ""),
   }));
   const thirdParty = new Set(sites.filter((x) => x.thirdParty).map((x) => x.code));
-  const drafts = draftVariances(facts, lines, submittedStacks, thirdParty, (c) => sites.find((x) => x.code === c)?.short ?? c);
+  // Third-party sites the counter closed: reported empty, or finished after counting every stack.
+  type StackExtra = { stk_nothinghere?: boolean; stk_sitefinished?: boolean; stk_comment?: string; stk_submittedon?: string; _stk_submittedby_value?: string };
+  const emptySites: EmptySite[] = stackRows
+    .filter((r) => ((r as StackExtra).stk_nothinghere || (r as StackExtra).stk_sitefinished) && submittedStates.has(label(Stk_stacksstk_status, r.stk_status) ?? ""))
+    .map((r) => {
+      const x = r as StackExtra;
+      return {
+        site: siteCode.get(r._stk_site_value!)!,
+        stack: r.stk_name,
+        by: nm(x._stk_submittedby_value),
+        at: hhmm(x.stk_submittedon),
+        reason: x.stk_comment ?? "No reason given",
+        finished: !!x.stk_sitefinished && !x.stk_nothinghere,
+      };
+    });
+  const submittedBy = new Map(stackRows.map((r) => [r.stk_stackid, (r as StackExtra)._stk_submittedby_value]));
+  const drafts = draftVariances(facts, lines, submittedStacks, thirdParty, (c) => sites.find((x) => x.code === c)?.short ?? c, emptySites);
   await syncVariances(drafts, stackRows, countRows, siteIdOf, thirdParty);
+
+  const allocation = await readAllocation(active.stk_stocktakeid, settingRows, peopleRows);
+  allocation.openRecounts = {};
+  for (const r of recountRows as unknown as { stk_status?: number; _ownerid_value?: string }[])
+    if (r.stk_status === code(Stk_recountsstk_status, "Open") && r._ownerid_value) allocation.openRecounts[r._ownerid_value] = (allocation.openRecounts[r._ownerid_value] ?? 0) + 1;
+
+  // Level 1 decisions the rules can take on their own (auto-decide.ts). A failure here
+  // (say, a role without rights to decide variances) must not stop the Hub loading.
+  const flag = (k: string, d: boolean) => (settingRows.find((x) => x.stk_name === k)?.stk_value ?? String(d)).toLowerCase() !== "false";
+  await autoDecide(
+    facts,
+    countRows,
+    thirdParty,
+    siteCode,
+    (c) => sites.find((x) => x.code === c)?.short ?? c,
+    {
+      on: flag("AutoDecide", AUTO_DEFAULTS.on),
+      weightLossKg: setting("AutoWeightLossKg", AUTO_DEFAULTS.weightLossKg),
+      netUnits: setting("AutoNetUnits", AUTO_DEFAULTS.netUnits),
+      acceptPocket: flag("AutoAcceptPocket", AUTO_DEFAULTS.acceptPocket),
+    },
+    allocation,
+  ).catch((e: unknown) => console.warn("Automatic variance decisions skipped:", e));
 
   const [varianceRows, exceptionRows] = await Promise.all([
     all(
       (o) => Stk_variancesService.getAll(o),
       {
-        select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_grade", "stk_expectedunits", "stk_countedunits", "stk_expectedkg", "stk_countedkg", "stk_suggestedcause", "stk_suggestionwhy", "stk_cause", "stk_state", "_stk_countline_value", "createdon"],
+        select: ["stk_varianceid", "stk_name", "_stk_site_value", "_stk_stack_value", "stk_outturn", "stk_grade", "stk_expectedunits", "stk_countedunits", "stk_expectedkg", "stk_countedkg", "stk_suggestedcause", "stk_suggestionwhy", "stk_cause", "stk_state", "_stk_countline_value", "stk_lotkey", "createdon"],
         filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`,
         orderBy: ["stk_name asc"],
       },
@@ -422,8 +499,8 @@ async function load(): Promise<MgmtData> {
       id: v.stk_varianceid,
       stackId: v._stk_stack_value,
       outturn: v.stk_outturn ?? "",
-      batch: line?.stk_batch ?? "",
-      counterId: line?._createdby_value,
+      batch: line?.stk_batch ?? (v as { stk_lotkey?: string }).stk_lotkey?.split("|").pop() ?? "",
+      counterId: line?._createdby_value ?? submittedBy.get(v._stk_stack_value!),
       lineId: v._stk_countline_value,
       siteId: v._stk_site_value,
     });
@@ -432,7 +509,7 @@ async function load(): Promise<MgmtData> {
       id: v.stk_name,
       photo: photoOf.get(v._stk_countline_value),
       site,
-      counterId: line?._createdby_value,
+      counterId: line?._createdby_value ?? submittedBy.get(v._stk_stack_value!),
       zone: thirdParty.has(site) ? `${sites.find((x) => x.code === site)?.short} · ${where?.name ?? ""}` : (where?.name ?? ""),
       outturn: v.stk_outturn ?? "",
       grade: v.stk_grade ?? "",
@@ -442,7 +519,7 @@ async function load(): Promise<MgmtData> {
       countedKg: v.stk_countedkg ?? undefined,
       cause: (label(Stk_variancesstk_cause, v.stk_cause) ?? label(Stk_variancesstk_suggestedcause, v.stk_suggestedcause) ?? "Not yet known") as RootCause,
       why: v.stk_suggestionwhy ?? "",
-      counter: line ? nm(line._createdby_value) : "—",
+      counter: line ? nm(line._createdby_value) : nm(submittedBy.get(v._stk_stack_value!)) || "—",
       at: line?.stk_countedon ? stamp(line.stk_countedon) : stamp(v.createdon),
       state: ({ Open: "open", "Recount sent": "recount", Accepted: "accepted", "Exception raised": "exception" } as const)[state as "Open"] ?? "open",
       ageHours: v.createdon ? Math.round((Date.now() - new Date(v.createdon).getTime()) / 36e5) : 0,
@@ -531,16 +608,36 @@ async function load(): Promise<MgmtData> {
   /* count day: counters, bags per hour, bags per site */
   const recountsByOwner = new Map<string, number>();
   for (const r of recountRows as unknown as { _ownerid_value?: string }[]) if (r._ownerid_value) recountsByOwner.set(r._ownerid_value, (recountsByOwner.get(r._ownerid_value) ?? 0) + 1);
-  const counters: Counter[] = assignmentRows.map((a) => {
-    const theirs = countRows.filter((c) => c._createdby_value === a._stk_counter_value);
+  // Lines a later blind recount replaced don't count towards anyone's bags (same lot rule as
+  // variance-rules.ts: one stack at Ibero, the whole site at a third party).
+  const lotOf = (c: (typeof countRows)[number]) => {
+    const code = siteCode.get(c._stk_site_value!) ?? "IBR";
+    return `${code}|${thirdParty.has(code) ? "" : (c._stk_stack_value ?? "")}|${c.stk_batch ?? ""}`;
+  };
+  const latestRecount = new Map<string, { id: string; at: string }>();
+  for (const c of countRows) {
+    if (!(c as { _stk_recount_value?: string })._stk_recount_value) continue;
+    const k = lotOf(c), at = c.stk_countedon ?? "";
+    if (!latestRecount.has(k) || at > latestRecount.get(k)!.at) latestRecount.set(k, { id: c.stk_countlineid, at });
+  }
+  const current = countRows.filter((c) => { const r = latestRecount.get(lotOf(c)); return !r || r.id === c.stk_countlineid; });
+  // One row per counter, across all their assignments (Ibero first).
+  const byCounter = new Map<string, typeof assignmentRows>();
+  for (const a of assignmentRows) if (a._stk_counter_value) byCounter.set(a._stk_counter_value, [...(byCounter.get(a._stk_counter_value) ?? []), a]);
+  const counters: Counter[] = [...byCounter.entries()].map(([id, mine]) => {
+    mine.sort((x, y) => Number(thirdParty.has(siteCode.get(x._stk_site_value!) ?? "IBR")) - Number(thirdParty.has(siteCode.get(y._stk_site_value!) ?? "IBR")));
+    const codes = mine.map((a) => siteCode.get(a._stk_site_value!) ?? "IBR");
+    const where = mine.map((a, i) => (thirdParty.has(codes[i]) ? (sites.find((s) => s.code === codes[i])?.short ?? codes[i]) : `${sites.find((s) => s.code === codes[i])?.short ?? codes[i]} ${areaOf(a).toLowerCase()}`));
+    const theirs = current.filter((c) => c._createdby_value === id);
     const first = theirs.map((c) => (c.stk_countedon ? new Date(c.stk_countedon).getHours() : 24)).sort((x, y) => x - y)[0];
     return {
-      name: nm(a._stk_counter_value),
-      site: siteCode.get(a._stk_site_value!) ?? "IBR",
-      area: areaOf(a),
+      name: nm(id),
+      site: codes[0],
+      sites: codes,
+      area: where.join(", "),
       bagsSoFar: theirs.reduce((s, c) => s + (c.stk_bags ?? 0), 0),
       startedAt: first == null || first === 24 ? 7 : first,
-      recounts: recountsByOwner.get(a._stk_counter_value!) ?? 0,
+      recounts: recountsByOwner.get(id) ?? 0,
     };
   });
   const byHour = new Map<string, number>();
@@ -732,12 +829,8 @@ async function load(): Promise<MgmtData> {
     site: siteCode.get(r._stk_site_value!)!,
     name: r.stk_name,
     status: label(Stk_stacksstk_status, r.stk_status) ?? "In progress",
+    empty: !!(r as { stk_nothinghere?: boolean }).stk_nothinghere,
   }));
-
-  const allocation = await readAllocation(active.stk_stocktakeid, settingRows, peopleRows);
-  allocation.openRecounts = {};
-  for (const r of recountRows as unknown as { stk_status?: number; _ownerid_value?: string }[])
-    if (r.stk_status === code(Stk_recountsstk_status, "Open") && r._ownerid_value) allocation.openRecounts[r._ownerid_value] = (allocation.openRecounts[r._ownerid_value] ?? 0) + 1;
 
   return {
     counts,
@@ -760,6 +853,7 @@ async function load(): Promise<MgmtData> {
       people: [...ids.person.keys()],
       physDelta,
       comtrasDelta: {},
+      comtras: comtrasRows.length ? comtrasPosition(comtrasRows, nm) : undefined,
     },
     stockTakes,
     sheets,
@@ -770,6 +864,20 @@ async function load(): Promise<MgmtData> {
     signatures,
     issues,
     audit,
+    setup,
+    reconItems: reconRows.map((r) => {
+      const x = r as { stk_reconitemid: string; stk_name: string; stk_kind?: number; stk_bags?: number; stk_inxbs?: boolean; stk_note?: string; createdon?: string; _createdby_value?: string };
+      return {
+        id: x.stk_reconitemid,
+        label: x.stk_name,
+        kind: (label(Stk_reconitemsstk_kind, x.stk_kind) ?? "Reconciling item") as ReconItem["kind"],
+        bags: Number(x.stk_bags ?? 0),
+        inXbs: !!x.stk_inxbs,
+        note: x.stk_note ?? undefined,
+        by: nm(x._createdby_value),
+        at: stamp(x.createdon),
+      };
+    }),
   };
 }
 
@@ -867,6 +975,146 @@ async function syncVariances(
       unwrap(await Stk_variancesService.update(had.stk_varianceid, fields as never), `update variance ${had.stk_name}`);
     }
   }
+}
+
+/**
+ * Applies the automatic Level 1 decisions (auto-decide.ts) to this stock take's variances.
+ * Decisions carry no "decided by" person: the explanation says which rule took them.
+ * Returns how many variances it decided.
+ */
+async function autoDecide(
+  facts: CountFact[],
+  lines: LineRow[],
+  thirdParty: Set<SiteCode>,
+  siteCode: Map<string, SiteCode>,
+  siteShort: (c: SiteCode) => string,
+  settings: AutoSettings,
+  allocation: AllocationData,
+): Promise<number> {
+  if (!settings.on) return 0;
+  const rows = await all(
+    (o) => Stk_variancesService.getAll(o),
+    {
+      select: ["stk_varianceid", "stk_name", "stk_lotkey", "stk_state", "stk_suggestedcause", "stk_outturn", "stk_expectedunits", "stk_countedunits", "stk_expectedkg", "stk_countedkg", "_stk_site_value", "_stk_stack_value", "_stk_countline_value", "stk_decidedon"] as never,
+      filter: `_stk_stocktake_value eq ${ids.stockTakeId} and (stk_state eq ${code(Stk_variancesstk_state, "Open")} or stk_state eq ${code(Stk_variancesstk_state, "Recount sent")})`,
+    },
+    "read variances to decide",
+  );
+  type Row = { stk_varianceid: string; stk_name: string; stk_lotkey?: string; stk_state?: number; stk_suggestedcause?: number; stk_outturn?: string; stk_expectedunits?: number; stk_countedunits?: number; stk_expectedkg?: number; stk_countedkg?: number; _stk_site_value?: string; _stk_stack_value?: string; _stk_countline_value?: string; stk_decidedon?: string };
+  const vrows = rows as unknown as Row[];
+  if (!vrows.length) return 0;
+  const byId = new Map(vrows.map((r) => [r.stk_varianceid, r]));
+  const recountState = code(Stk_variancesstk_state, "Recount sent");
+  const vs: AutoVariance[] = vrows.map((r) => {
+    const key = r.stk_lotkey?.startsWith(`${ids.stockTakeId}|`) ? r.stk_lotkey.slice(ids.stockTakeId.length + 1) : "";
+    return {
+      id: r.stk_varianceid,
+      key,
+      site: siteCode.get(r._stk_site_value!) ?? "IBR",
+      stack: key.split("|")[1] ?? "",
+      outturn: r.stk_outturn ?? "",
+      expectedUnits: r.stk_expectedunits ?? 0,
+      countedUnits: r.stk_countedunits ?? 0,
+      expectedKg: Number(r.stk_expectedkg ?? 0),
+      countedKg: Number(r.stk_countedkg ?? 0),
+      cause: (label(Stk_variancesstk_suggestedcause, r.stk_suggestedcause) ?? "Not yet known") as RootCause,
+      state: r.stk_state === recountState ? "recount" : "open",
+      decided: !!r.stk_decidedon,
+    };
+  });
+  const plan = planAutoDecisions(vs, facts, thirdParty, settings, siteShort);
+  if (!plan.length) return 0;
+
+  const now = new Date().toISOString();
+  const lineBy = new Map(lines.map((l) => [l.stk_countlineid, l._createdby_value]));
+  const decide = (id: string, state: string, cause: RootCause, why: string) =>
+    Stk_variancesService.update(id, {
+      stk_state: code(Stk_variancesstk_state, state),
+      stk_cause: code(Stk_variancesstk_cause, cause),
+      stk_suggestionwhy: why.slice(0, 2000),
+      stk_decidedon: now,
+    } as never).then((r) => unwrap(r, "decide a variance automatically"));
+
+  // Recounters: a different counter on the published allocation (as the Variances page picks them).
+  const live = allocation.runs.find((r) => r.status === "Published");
+  const profiles = allocation.profiles.filter((p) => p.active);
+  const counters: AllocCounter[] = (live?.present.length ? live.present : profiles.map((p) => p.userId)).map((id) => {
+    const p = profiles.find((x) => x.userId === id);
+    return p ? { id, name: p.name, homeRows: p.homeRows, homeSite: p.homeSite, thirdPartyOk: p.thirdPartyOk } : { id, name: id, noProfile: true };
+  });
+  const open = allocation.openRecounts ?? {};
+  const recountNames = await all((o) => Stk_recountsService.getAll(o), { select: ["stk_name"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` }, "number the recounts");
+  let nextRecount = recountNames.reduce((m, r) => Math.max(m, Number(r.stk_name.replace(/\D/g, "")) || 0), 0);
+  const exNames = await all((o) => Stk_exceptionsService.getAll(o), { select: ["stk_name"] }, "number the exceptions");
+  let nextEx = exNames.reduce((m, r) => Math.max(m, Number(/^EX-(\d+)/.exec(r.stk_name)?.[1] ?? 0)), 0);
+  const raise = (title: string, kind: string, dept: Dept, bags: number, ref: string, varianceId: string) =>
+    Stk_exceptionsService.create({
+      stk_name: `EX-${String(++nextEx).padStart(3, "0")} — ${title}`.slice(0, 200),
+      statecode: 0,
+      stk_kind: code(Stk_exceptionsstk_kind, Object.values(Stk_exceptionsstk_kind).includes(kind as never) ? kind : KIND_FALLBACK),
+      stk_source: code(Stk_exceptionsstk_source, "Count"),
+      stk_reference: ref.slice(0, 60),
+      stk_department: code(Stk_exceptionsstk_department, dept),
+      stk_bags: Math.round(bags), // whole bags (column is a whole number)
+      stk_duedate: addWorkingDays(new Date(), ids.slaDays).toISOString().slice(0, 10),
+      stk_status: code(Stk_exceptionsstk_status, "Open"),
+      stk_escalationlevel: code(Stk_exceptionsstk_escalationlevel, "Owner"),
+      "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+      "stk_variance@odata.bind": bind("stk_variances", varianceId),
+    } as never).then((r) => unwrap(r, "raise an exception automatically"));
+
+  let decided = 0;
+  const groups = new Map<string, typeof plan>();
+  for (const a of plan) {
+    const r = byId.get(a.id)!;
+    const v = vs.find((x) => x.id === a.id)!;
+    if (a.group) {
+      groups.set(a.group, [...(groups.get(a.group) ?? []), a]);
+      continue;
+    }
+    if (a.act === "accept") await decide(a.id, "Accepted", a.cause, a.why);
+    else if (a.act === "review") await decide(a.id, "Open", a.cause, a.why);
+    else if (a.act === "exception") {
+      await decide(a.id, "Exception raised", a.cause, a.why);
+      const d = v.countedUnits - v.expectedUnits;
+      const dkg = Math.round(v.countedKg - v.expectedKg);
+      const diff = d === 0 ? `${dkg > 0 ? "+" : ""}${dkg} kg` : `${d > 0 ? "+" : ""}${d} units`;
+      await raise(`${v.outturn} at ${v.stack || siteShort(v.site)}: ${diff} (${a.rule})`, a.cause, a.dept ?? "Operations", d === 0 ? Math.abs(dkg) / 60 : Math.abs(d), r.stk_name, a.id);
+    } else if (a.act === "recount") {
+      if (!r._stk_stack_value) continue; // no stack to send it to: leave for the supervisor
+      const original = lineBy.get(r._stk_countline_value ?? "");
+      const pick = pickRecounter({ site: v.site, stack: v.stack, exclude: original ? [original] : [], counters, openRecounts: open, rules: allocation.rules, thirdParty });
+      const owner = pick?.id ?? original;
+      if (pick) open[pick.id] = (open[pick.id] ?? 0) + 1;
+      await decide(a.id, "Recount sent", a.cause, `Sent automatically for a blind recount${pick ? ` to ${pick.name}` : ""}: no rule explains the difference.`);
+      unwrap(
+        await Stk_recountsService.create({
+          stk_name: `R-${String(++nextRecount).padStart(3, "0")}`,
+          statecode: 0,
+          stk_outturn: v.outturn,
+          stk_batch: v.key.split("|")[2] ?? v.outturn,
+          stk_why: `Count ${v.outturn} again from the bottom tier up. The earlier figure is hidden on purpose.`,
+          stk_status: code(Stk_recountsstk_status, "Open"),
+          "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+          "stk_stack@odata.bind": bind("stk_stacks", r._stk_stack_value),
+          "stk_variance@odata.bind": bind("stk_variances", a.id),
+          ...(owner ? { "ownerid@odata.bind": bind("systemusers", owner) } : {}),
+        } as never),
+        "send a recount automatically",
+      );
+    }
+    decided++;
+  }
+  // One exception per third-party site, listing its lots in the variances it covers.
+  for (const [, acts] of groups) {
+    const first = vs.find((x) => x.id === acts[0].id)!;
+    const short = acts.reduce((a, x) => { const v = vs.find((y) => y.id === x.id)!; return a + (v.expectedUnits - v.countedUnits); }, 0);
+    const names = acts.map((x) => byId.get(x.id)!.stk_name).sort();
+    for (const a of acts) await decide(a.id, "Exception raised", a.cause, a.why);
+    await raise(`${siteShort(first.site)}: ${acts.length} lot${acts.length === 1 ? "" : "s"} short, ${short} units to confirm with the warehouse`, "Third party", "Logistics", short, `${names[0]}–${names[names.length - 1]} (${names.length})`, acts[0].id);
+    decided += acts.length;
+  }
+  return decided;
 }
 
 /* ---------- actions ---------- */
@@ -1381,6 +1629,74 @@ async function updateIssue(name: string, patch: Partial<Issue>) {
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
+type ComtrasRow = { stk_basketcode?: string; stk_bags?: number; stk_kg?: number; stk_linetype?: string; stk_contract?: string; stk_origin?: string; stk_counterparty?: string; stk_source?: string; createdon?: string; _createdby_value?: string };
+function comtrasPosition(rows: ComtrasRow[], nm: (id?: string) => string) {
+  const first = rows[0];
+  return {
+    file: first.stk_source ?? "",
+    at: stamp(first.createdon),
+    by: nm(first._createdby_value),
+    lines: rows.map((r) => ({
+      contract: r.stk_contract ?? "",
+      lineType: (r.stk_linetype ?? "Inventory") as ComtrasLineType,
+      origin: r.stk_origin ?? "",
+      quality: r.stk_basketcode ?? "",
+      bags60: Number(r.stk_bags ?? 0),
+      kg: Number(r.stk_kg ?? 0),
+      counterparty: r.stk_counterparty ?? "",
+    })),
+  };
+}
+
+async function addReconItem(i: ReconItem) {
+  if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Start the stock take first.");
+  return unwrap(
+    await Stk_reconitemsService.create({
+      stk_name: i.label.slice(0, 200),
+      statecode: 0,
+      stk_kind: code(Stk_reconitemsstk_kind, i.kind),
+      stk_bags: Math.round(i.bags * 100) / 100,
+      stk_inxbs: i.inXbs,
+      stk_note: i.note ?? null,
+      "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+    } as never),
+    `add ${i.label}`,
+  ).stk_reconitemid;
+}
+
+async function removeReconItem(id: string) {
+  await Stk_reconitemsService.delete(id);
+}
+
+/** The Comtras position is a snapshot like XBS: loaded once per stock take, never changed. */
+async function importComtras(u: ComtrasUpload, onProgress?: (done: number, total: number) => void) {
+  if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Start the stock take first; the Comtras position is loaded for it.");
+  const already = await all((o) => Stk_comtraspositionsService.getAll(o), { select: ["stk_name"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}`, top: 1 }, "check the Comtras position");
+  if (already.length) throw new Error("A Comtras position is already loaded for this stock take. Comtras snapshots are never re-imported or changed.");
+  const today = new Date().toISOString().slice(0, 10);
+  let done = 0;
+  for (const l of u.lines) {
+    unwrap(
+      await Stk_comtraspositionsService.create({
+        stk_name: `${l.lineType} ${l.contract} ${l.quality}`.slice(0, 100),
+        statecode: 0,
+        stk_snapshotdate: today,
+        stk_basketcode: l.quality.slice(0, 10),
+        stk_bags: Math.round(l.bags60 * 100) / 100,
+        stk_kg: Math.round(l.kg * 100) / 100,
+        stk_linetype: l.lineType,
+        stk_contract: l.contract.slice(0, 20),
+        stk_origin: l.origin.slice(0, 60),
+        stk_counterparty: l.counterparty.slice(0, 60),
+        stk_source: u.file.slice(0, 200),
+        "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+      } as never),
+      `save Comtras line ${l.contract}`,
+    );
+    onProgress?.(++done, u.lines.length);
+  }
+}
+
 async function importXbs(u: XbsUploadToSave, onProgress?: (done: number, total: number) => void) {
   // XBS is never changed: an upload becomes a new, locked import.
   const t = u.snapshotAt ? new Date(u.snapshotAt) : new Date();
@@ -1456,6 +1772,13 @@ async function importXbs(u: XbsUploadToSave, onProgress?: (done: number, total: 
   return name;
 }
 
+/** "31/08/2026" (or an ISO date) → "2026-08-31"; today if it can't be read. */
+function isoDay(d: string) {
+  const m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : new Date().toISOString().slice(0, 10);
+}
+
 async function createStockTake(st: StockTake) {
   const importId = ids.importId.get(st.importId);
   if (!importId) throw new Error(`XBS import ${st.importId} not found`);
@@ -1465,7 +1788,7 @@ async function createStockTake(st: StockTake) {
       statecode: 0,
       stk_type: code(Stk_stocktakesstk_type, st.type === "100% stock take" ? "100% (zero-out)" : "Monthly"),
       stk_status: code(Stk_stocktakesstk_status, "Count in progress"),
-      stk_countdate: new Date().toISOString().slice(0, 10),
+      stk_countdate: isoDay(st.countDate),
       "stk_import@odata.bind": bind("stk_xbsimports", importId),
     } as never),
     "create the stock take",
@@ -1473,18 +1796,23 @@ async function createStockTake(st: StockTake) {
   const newId = created.stk_stocktakeid;
   ids.stockTake.set(st.id, newId);
   ids.stockTake.set(st.title, newId);
-  // Counters keep their areas: copy the current stock take's assignments.
-  const current = await all(
-    (o) => Stk_assignmentsService.getAll(o),
-    { select: ["stk_name", "stk_rows", "_stk_site_value", "_stk_counter_value"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}` },
-    "read assignments",
-  );
+  // Counters keep their areas until a new allocation is published: copy the current stock take's
+  // active assignments (none on the very first stock take).
+  const current =
+    ids.stockTakeId && ids.stockTakeId !== NO_STOCK_TAKE
+      ? await all(
+          (o) => Stk_assignmentsService.getAll(o),
+          { select: ["stk_name", "stk_rows", "stk_sections", "_stk_site_value", "_stk_counter_value"] as never, filter: `_stk_stocktake_value eq ${ids.stockTakeId} and statecode eq 0` },
+          "read assignments",
+        )
+      : [];
   for (const a of current)
     unwrap(
       await Stk_assignmentsService.create({
         stk_name: a.stk_name,
         statecode: 0,
         stk_rows: a.stk_rows ?? null,
+        stk_sections: (a as { stk_sections?: string }).stk_sections ?? null,
         "stk_stocktake@odata.bind": bind("stk_stocktakes", newId),
         "stk_counter@odata.bind": bind("systemusers", a._stk_counter_value!),
         "stk_site@odata.bind": bind("stk_sites", a._stk_site_value!),
@@ -1540,6 +1868,9 @@ export const dataverseSource: DataSource = {
   createStockTake,
   closeStockTake,
   importXbs,
+  importComtras,
+  addReconItem,
+  removeReconItem,
   decideSheet,
   decideVariance,
   recountLine,

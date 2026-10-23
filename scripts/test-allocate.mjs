@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const root = new URL("..", import.meta.url);
 const out = await build({
-  stdin: { contents: `export * from "./src/data/allocate"; export * from "./src/shared/sections"; export * from "./src/data/variance-rules";`, resolveDir: fileURLToPath(root), loader: "ts" },
+  stdin: { contents: `export * from "./src/data/allocate"; export * from "./src/shared/sections"; export * from "./src/data/variance-rules"; export * from "./src/data/auto-decide";`, resolveDir: fileURLToPath(root), loader: "ts" },
   bundle: true, format: "esm", platform: "node", write: false,
 });
-const { allocate, buildAreas, zoneInSections, sectionList, parseZone, pickRecounter, draftVariances, sortSections, sectionsWords } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+const { allocate, buildAreas, zoneInSections, sectionList, parseZone, pickRecounter, draftVariances, sortSections, sectionsWords, planAutoDecisions, AUTO_DEFAULTS } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
 
 const snap = JSON.parse(readFileSync(new URL("../src/data/xbs-2026-03-02.json", import.meta.url), "utf8"));
 const lines = (Array.isArray(snap) ? snap : snap.lines ?? Object.values(snap).find(Array.isArray)).filter((l) => l.t === "W" || l.t === "B");
@@ -114,6 +114,57 @@ check(!judge([fx("Achieng", exp - 2), fx("Brian", exp, "R-007")]), "Brian's matc
 const still = judge([fx("Achieng", exp - 2), fx("Brian", exp - 1, "R-007")]);
 check(still && still.cause !== "Duplicate entry" && still.countedUnits === exp - 1, `a recount that still differs is judged on the recount alone (${still?.cause})`);
 check(judge([fx("Achieng", exp - 2), fx("Brian", exp)])?.cause === "Duplicate entry", "two ordinary counts of the same lot are still a duplicate");
+
+// 8. A third-party site reported empty: every lot XBS has there is a variance counted as 0.
+const tpSite = "KCCE";
+const tpLots = new Set(lines.filter((l) => l.wh === tpSite).map((l) => l.b));
+const emptyDrafts = draftVariances([], lines, [{ site: tpSite, stack: "Whole site" }], thirdParty, siteName, [{ site: tpSite, stack: "Whole site", by: "William", at: "09:40", reason: "Coffee delivered or moved out before the count" }]);
+check(emptyDrafts.length === tpLots.size && emptyDrafts.every((d) => d.countedUnits === 0 && d.cause === "Unposted gate-out" && d.stack === "Whole site" && /reported empty by William/.test(d.why)),
+  `an empty ${tpSite} gives one variance per XBS lot there (${emptyDrafts.length} of ${tpLots.size}), counted 0, cause "Unposted gate-out"`);
+check(draftVariances([], lines, [], thirdParty, siteName).length === 0, "a site nobody reported isn't judged (not counted, not zero)");
+
+// 9. A third-party site the counter finished: lots nobody counted there become "not found" (counted 0).
+const agl = [...new Set(lines.filter((l) => l.wh === "AGL").map((l) => l.b))];
+const one = lines.find((l) => l.wh === "AGL" && l.b === agl[0]);
+const aglFacts = [{ lineId: "x", site: "AGL", stack: "Area 1", batch: one.b, outturn: one.o, grade: one.i, units: lines.filter((l) => l.wh === "AGL" && l.b === one.b).reduce((s, l) => s + l.u, 0), kg: lines.filter((l) => l.wh === "AGL" && l.b === one.b).reduce((s, l) => s + l.kg, 0), by: "William", at: "10:00", other: false }];
+const finished = draftVariances(aglFacts, lines, [{ site: "AGL", stack: "Area 1" }, { site: "AGL", stack: "Whole site" }], thirdParty, siteName, [{ site: "AGL", stack: "Whole site", by: "William", at: "17:30", reason: "Every stack at the site is counted", finished: true }]);
+const withStock = agl.filter((b) => b !== one.b && lines.filter((l) => l.wh === "AGL" && l.b === b).some((l) => l.u > 0 || l.kg >= 1)).length;
+check(finished.length === withStock && finished.every((d) => d.countedUnits === 0 && /^Not found at AGL: William finished the site/.test(d.why) && d.cause !== "Unposted gate-out"),
+  `a finished AGL judges every lot nobody counted (${finished.length} of ${withStock} with stock in XBS) as not found; the counted lot that matches isn't a variance`);
+const unfinished = draftVariances(aglFacts, lines, [{ site: "AGL", stack: "Area 1" }], thirdParty, siteName);
+check(unfinished.length === 0, "until the site is finished, lots nobody counted aren't judged");
+
+// Automatic Level 1 decisions (auto-decide.ts).
+{
+  const tp = new Set(["AGL", "KPCU"]);
+  const v = (id, o) => ({ id, key: `${o.site ?? "IBR"}|${o.stack ?? "A-01-1"}|${id}`, site: "IBR", stack: "A-01-1", outturn: id, expectedUnits: 10, countedUnits: 10, expectedKg: 600, countedKg: 600, cause: "Not yet known", state: "open", decided: false, ...o });
+  const act = (p, id) => p.find((a) => a.id === id);
+  const vs = [
+    v("m1", { outturn: "OUT1", stack: "A-01-1", countedUnits: 15 }),
+    v("m2", { outturn: "OUT1", stack: "B-02-1", countedUnits: 5 }),
+    v("pk", { countedKg: 605 }),
+    v("wl", { countedKg: 570 }),
+    v("tp1", { site: "AGL", stack: "", countedUnits: 0, cause: "Partial delivery: rest still at third party" }),
+    v("tp2", { site: "AGL", stack: "", countedUnits: 4, cause: "Unposted gate-out" }),
+    v("nx", { expectedUnits: 0, expectedKg: 0, countedUnits: 37, countedKg: 2198, cause: "Mapping error" }),
+    v("rc", { countedUnits: 8 }),
+    v("old", { countedUnits: 8, decided: true }),
+  ];
+  const p = planAutoDecisions(vs, [], tp, AUTO_DEFAULTS);
+  check(act(p, "m1")?.act === "accept" && act(p, "m2")?.act === "accept", "auto: over on one stack, short on another, netting to 0 - both accepted as moved");
+  check(act(p, "pk")?.act === "accept" && act(p, "pk").cause === "Pocket / unit difference", "auto: bags match, 5 kg over - accepted as a pocket / unit difference");
+  check(act(p, "wl")?.act === "exception" && act(p, "wl").dept === "Warehouse", "auto: bags match, 30 kg under at Ibero - weight-loss exception for Warehouse");
+  check(act(p, "tp1")?.group === "site:AGL" && act(p, "tp2")?.group === "site:AGL", "auto: third-party lots short - one AGL exception between them");
+  check(act(p, "nx")?.act === "exception" && act(p, "nx").rule === "Found, not in XBS", "auto: counted, not in XBS - exception");
+  check(act(p, "rc")?.act === "recount", "auto: unexplained difference - blind recount");
+  check(!act(p, "old"), "auto: a variance someone already decided is left alone");
+  check(planAutoDecisions(vs, [], tp, { ...AUTO_DEFAULTS, on: false }).length === 0, "auto: switched off - nothing decided");
+  const f = (units, recount) => ({ lineId: String(Math.random()), site: "IBR", stack: "A-01-1", batch: "rc", outturn: "rc", grade: "", units, kg: units * 60, by: "x", at: "", other: false, recount });
+  const sent = [v("rc", { countedUnits: 8, state: "recount", decided: true })];
+  check(act(planAutoDecisions(sent, [f(8), f(8, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "exception", "auto: recount repeats the first count - exception");
+  check(act(planAutoDecisions(sent, [f(9), f(8, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "review", "auto: recount disagrees with the first count - back to the supervisor");
+  check(!act(planAutoDecisions(sent, [f(8)], tp, AUTO_DEFAULTS), "rc"), "auto: recount not in yet - waits");
+}
 
 console.log("\nPlan (seed " + plan.seed + "):");
 for (const r of plan.rows) console.log(`  ${r.name.padEnd(9)} ${String(r.bags).padStart(6)} bags  ${r.areas.map((a) => a.label).join(" · ")}`);

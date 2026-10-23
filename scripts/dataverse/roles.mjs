@@ -35,6 +35,7 @@ const READ_ALL_MGMT = {
   stk_issue: "R",
   stk_counterprofile: "R",
   stk_allocationrun: "R",
+  stk_reconitem: "R",
   Note: "R", // photos on count lines and problem reports
 };
 
@@ -63,6 +64,7 @@ export const ROLES = [
       stk_assignment: "CRWD",
       stk_counterprofile: "CRW", // who counts, home rows, third-party clearance
       stk_allocationrun: "CRW", // random counter allocation: generate, swap, publish
+      stk_reconitem: "CRWD", // BRIC bridge items (with Finance)
       stk_countsheet: "RWA",
       stk_stack: "CRW",
       stk_recount: "CRWA",
@@ -113,6 +115,7 @@ export const ROLES = [
       stk_exception: "CRWA",
       stk_signoff: "CR",
       stk_stocktake: "RW", // records who prepared the pack
+      stk_reconitem: "CRWD", // prepares the BRIC bridge: afloat and reconciling items
     },
   },
   {

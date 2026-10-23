@@ -301,6 +301,38 @@
           "required": true,
           "maxLength": 60
         },
+        "stk_nothinghere": {
+          "type": "string",
+          "title": "Nothing to count",
+          "x-ms-dataverse-attribute": "stk_nothinghere",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "stk_nothinghere",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "a16e4e09-01cb-f111-a05a-7ced8d4931c7",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Nothing to count",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "stk_nothingherename": {
+          "type": "string",
+          "title": "stk_nothingherename",
+          "x-ms-dataverse-attribute": "stk_nothingherename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "stk_nothinghereName",
+          "x-ms-dataverse-attribute-of": "stk_nothinghere",
+          "x-ms-read-only": true
+        },
         "stk_site": {
           "type": "string",
           "title": "Warehouse",
@@ -311,6 +343,38 @@
             "stk_site"
           ],
           "required": true
+        },
+        "stk_sitefinished": {
+          "type": "string",
+          "title": "Site finished",
+          "x-ms-dataverse-attribute": "stk_sitefinished",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "stk_sitefinished",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "e5fe1b79-0bcb-f111-a05a-7ced8d4931c7",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Site finished",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "stk_sitefinishedname": {
+          "type": "string",
+          "title": "stk_sitefinishedname",
+          "x-ms-dataverse-attribute": "stk_sitefinishedname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "stk_sitefinishedName",
+          "x-ms-dataverse-attribute-of": "stk_sitefinished",
+          "x-ms-read-only": true
         },
         "stk_sitename": {
           "type": "string",

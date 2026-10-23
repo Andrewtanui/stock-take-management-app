@@ -9,9 +9,9 @@
 // Physical lots are placed in a basket through their XBS line (batch, else
 // outturn); lots XBS doesn't know go to "No basket".
 
-import { allLines, basketMap, comtrasDelta, SITES } from "./repository";
+import { allLines, basketMap, comtrasPosition, SITES } from "./repository";
 import { comparable, currentCounts } from "./reports";
-import type { BasketMap, CountRow, PrimaryBasket, Site, StackInfo, XbsLine } from "./types";
+import type { BasketMap, CountRow, PrimaryBasket, ReconItem, Site, StackInfo, XbsLine } from "./types";
 
 export interface ReconInput {
   counts: CountRow[];
@@ -19,10 +19,13 @@ export interface ReconInput {
   baskets?: BasketMap[];
 }
 
+/** Comtras quality codes that aren't secondary baskets in the mapping roll up here. */
+export const NOT_MAPPED = "Not mapped";
+
 export interface ReconRow {
   key: string;
   label: string;
-  primary?: PrimaryBasket;
+  primary?: PrimaryBasket | typeof NOT_MAPPED;
   /** XBS for the whole basket / warehouse. */
   xbsWhole: number;
   /** XBS for the part that has been counted — what Physical is compared with. */
@@ -53,11 +56,23 @@ function prepare(input: ReconInput) {
 const finish = (r: ReconRow): ReconRow => ({ ...r, cover: r.xbsWhole ? r.xbs / r.xbsWhole : r.physical ? 1 : 0 });
 
 /** Rows by secondary basket and their primary-basket roll-up. */
+/**
+ * Comtras (BRIC) bags per quality code: Arabica Kenya inventory + longs, as in Finance's
+ * "Total BRIC (Comtras)". Undefined until a P526 is loaded for the stock take.
+ */
+export function comtrasByCode() {
+  const p = comtrasPosition();
+  if (!p) return undefined;
+  const m = new Map<string, number>();
+  for (const l of p.lines) if (/kenya/i.test(l.origin) && l.lineType !== "Short") m.set(l.quality, (m.get(l.quality) ?? 0) + l.bags60);
+  return m;
+}
+
 export function threeWay(input: ReconInput) {
   const { counts, inScope, basketOf } = prepare(input);
   const map = new Map((input.baskets?.length ? input.baskets : basketMap()).map((b) => [b.code, b]));
-  const delta = comtrasDelta();
-  const hasComtras = Object.keys(delta).length > 0;
+  const ctr = comtrasByCode();
+  const hasComtras = !!ctr;
 
   const sec = new Map<string, ReconRow>();
   const row = (code: string) => {
@@ -75,7 +90,12 @@ export function threeWay(input: ReconInput) {
     if (inScope(l)) r.xbs += eq(l.kg);
   }
   for (const c of counts) row(basketOf(c)).physical += eq(c.kg);
-  if (hasComtras) for (const r of sec.values()) r.comtras = r.xbsWhole + (delta[r.key] ?? 0);
+  if (ctr) {
+    // Comtras books some stock under codes our mapping doesn't have: keep them visible, never drop them.
+    for (const code of ctr.keys())
+      if (!sec.has(code)) sec.set(code, { key: code, label: `${code} (in Comtras, not in the mapping)`, primary: NOT_MAPPED, xbsWhole: 0, xbs: 0, physical: 0, cover: 0 });
+    for (const r of sec.values()) r.comtras = ctr.get(r.key) ?? 0;
+  }
 
   const secondary = [...sec.values()].map(finish).sort((a, b) => a.key.localeCompare(b.key));
   const primaries = [...new Set(secondary.map((s) => s.primary!))];
@@ -172,3 +192,27 @@ function totalOf(rows: ReconRow[], hasComtras: boolean) {
 }
 
 const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);
+
+/**
+ * Finance's bridge from the Comtras (BRIC) total to the Ibero stock position, in two columns
+ * (physical count and XBS), as on the signed month-end page:
+ *   Total BRIC - (Ibero count results + coffee afloat) = difference;
+ *   difference - reconciling items = the BRIC vs Ibero stock position still unexplained
+ *   (Finance's "franchise"). Afloat counts in both columns; an item counts in the XBS column
+ *   only when it says so (e.g. Kenyan longs).
+ */
+export function bricBridge(input: ReconInput, items: ReconItem[]) {
+  const ctr = comtrasByCode();
+  if (!ctr) return undefined;
+  const bric = [...ctr.values()].reduce((a, b) => a + b, 0);
+  const sites = byWarehouse(input);
+  const counted = { physical: sum(sites, (s) => s.physical), xbs: sum(sites, (s) => s.xbsWhole) };
+  const afloatItems = items.filter((i) => i.kind === "Coffee afloat");
+  const afloat = sum(afloatItems, (i) => i.bags);
+  const totalIbero = { physical: counted.physical + afloat, xbs: counted.xbs + afloat };
+  const difference = { physical: bric - totalIbero.physical, xbs: bric - totalIbero.xbs };
+  const recon = items.filter((i) => i.kind === "Reconciling item");
+  const itemsTotal = { physical: sum(recon, (i) => i.bags), xbs: sum(recon.filter((i) => i.inXbs), (i) => i.bags) };
+  const position = { physical: difference.physical - itemsTotal.physical, xbs: difference.xbs - itemsTotal.xbs };
+  return { bric, sites, counted, afloatItems, afloat, totalIbero, difference, recon, itemsTotal, position };
+}

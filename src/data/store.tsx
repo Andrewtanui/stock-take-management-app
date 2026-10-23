@@ -4,8 +4,11 @@
 // others (approve a sheet, close a variance, sign a gate). Power Automate
 // reacts to the saved rows (notifications, escalations).
 
+import type { ReconItem } from "./types";
+import type { ComtrasUpload } from "./comtras-parse";
+import type { ComtrasPosition } from "./source/types";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { CHAIN, SITES, addImport, basketMap, setReference } from "./repository";
+import { CHAIN, SITES, addImport, basketMap, setComtrasPosition, setReference } from "./repository";
 import { getSource, type AllocationData, type DataSource, type MgmtData, type Signature, type XbsUploadToSave } from "./source";
 import { pickRecounter, type AllocCounter, type Plan } from "./allocate";
 import type {
@@ -51,7 +54,7 @@ function stamp() {
   return `Today, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function useStoreState(source: DataSource, data: MgmtData) {
+function useStoreState(source: DataSource, data: MgmtData, reload: () => void = () => {}) {
   const [role, setRoleState] = useState<Role>("Operations Admin");
   const [toast, setToast] = useState<string | null>(null);
   const [stockTakes, setStockTakes] = useState<StockTake[]>(data.stockTakes);
@@ -67,6 +70,8 @@ function useStoreState(source: DataSource, data: MgmtData) {
   const [directPurchases, setDirectPurchases] = useState<DirectPurchase[]>(data.reference.directPurchases);
   // Count lines and stacks are read-only here; they change in the counter app.
   const counts = data.counts ?? [];
+  const [comtras, setComtras] = useState<ComtrasPosition | undefined>(data.reference.comtras);
+  const [reconItems, setReconItems] = useState<ReconItem[]>(data.reconItems ?? []);
   const [allocation, setAllocation] = useState<AllocationData>(
     data.allocation ?? { profiles: [], runs: [], lastAreas: {}, rules: { homeArea: true, rotation: true, thirdPartyClearance: true }, people: [] },
   );
@@ -147,6 +152,8 @@ function useStoreState(source: DataSource, data: MgmtData) {
     directPurchases,
     people: data.reference.people,
     source: source.kind,
+    /** No stock take yet: import XBS, check it, then start the first stock take. */
+    setup: !!data.setup,
     flash,
     /** A counter's photo (Dataverse Note), loaded when someone opens it. */
     photo: (id: string) => source.photo(id),
@@ -158,9 +165,16 @@ function useStoreState(source: DataSource, data: MgmtData) {
 
     createStockTake(st: StockTake) {
       setStockTakes((xs) => [st, ...xs]);
-      persist(source.createStockTake(st), st.title, () => setStockTakes((xs) => xs.filter((x) => x.id !== st.id)));
       log("Stock Takes", st.id, `Created; ${st.type}; ${st.sites.length} warehouses`);
       flash(`${st.title} created. Counters can start.`);
+      // Reload so the Hub works on the new stock take (its XBS lines, allocation, sheets).
+      persist(
+        source.createStockTake(st).then(() => {
+          if (source.kind !== "mock") window.setTimeout(reload, 1200);
+        }),
+        st.title,
+        () => setStockTakes((xs) => xs.filter((x) => x.id !== st.id)),
+      );
     },
     closeStockTake(id: string, comment: string) {
       const before = stockTakes.find((s) => s.id === id);
@@ -346,6 +360,49 @@ function useStoreState(source: DataSource, data: MgmtData) {
       flash(`${d.contract} added.`);
     },
 
+    comtras,
+    reconItems,
+    /** Adds a line to the BRIC bridge (shown at once, saved in the background). */
+    addReconItem(i: ReconItem) {
+      const tmp = `tmp-${Date.now()}`;
+      setReconItems((xs) => [...xs, { ...i, id: tmp, by: me, at: stamp() }]);
+      source.addReconItem(i).then(
+        (id) => {
+          setReconItems((xs) => xs.map((x) => (x.id === tmp ? { ...x, id } : x)));
+          log("Reconciliation", i.label, `Added ${i.kind}: ${i.bags} bags${i.inXbs ? " (physical and XBS)" : " (physical)"}`);
+          flash(`${i.label} added to the bridge.`);
+        },
+        (e: unknown) => {
+          setReconItems((xs) => xs.filter((x) => x.id !== tmp));
+          flash(`Couldn't add ${i.label}. ${e instanceof Error ? e.message : ""}`.trim());
+        },
+      );
+    },
+    removeReconItem(id: string) {
+      const before = reconItems;
+      const gone = reconItems.find((x) => x.id === id);
+      setReconItems((xs) => xs.filter((x) => x.id !== id));
+      persist(source.removeReconItem(id), gone?.label ?? "the item", () => setReconItems(before));
+      if (gone) log("Reconciliation", gone.label, "Removed from the bridge");
+    },
+    /** Loads the Comtras P526 position for the active stock take; resolves true once it's saved. */
+    importComtras(upload: ComtrasUpload, onProgress?: (done: number, total: number) => void) {
+      return source
+        .importComtras(upload, onProgress)
+        .then(() => {
+          const position = { file: upload.file, at: stamp(), by: me, lines: upload.lines };
+          setComtrasPosition(position);
+          setComtras(position);
+          log("Comtras", upload.file, `Loaded ${upload.lines.length} P526 lines`);
+          flash(`Comtras position loaded: ${upload.lines.length} contract lines.`);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the Comtras position. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
     /** Resolves true once the import is saved, so the screen only shows "Imported" after it really is. */
     importXbs(upload: XbsUploadToSave, onProgress?: (done: number, total: number) => void) {
       return source
@@ -362,6 +419,8 @@ function useStoreState(source: DataSource, data: MgmtData) {
           });
           log("XBS imports", name, `Imported ${upload.lines.length} rows from ${upload.files.length} files`);
           flash(`${name} imported: ${upload.lines.length.toLocaleString("en-GB")} rows. ${upload.warnings ? `${upload.warnings} warnings are being raised as exceptions.` : "No warnings."}`);
+          // Before the first stock take, the pre-count checks read the latest import: reload to show it.
+          if (data.setup && source.kind !== "mock") window.setTimeout(reload, 2500);
           return true;
         })
         .catch((e: unknown) => {
@@ -423,13 +482,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   if (phase.s === "loading") return <Splash />;
   if (phase.s === "error") return <LoadError message={phase.message} onRetry={load} />;
   return (
-    <Ready source={phase.source} data={phase.data}>
+    <Ready source={phase.source} data={phase.data} reload={load}>
       {children}
     </Ready>
   );
 }
 
-function Ready({ source, data, children }: { source: DataSource; data: MgmtData; children: ReactNode }) {
-  const s = useStoreState(source, data);
+function Ready({ source, data, reload, children }: { source: DataSource; data: MgmtData; reload: () => void; children: ReactNode }) {
+  const s = useStoreState(source, data, reload);
   return <Ctx.Provider value={s}>{children}</Ctx.Provider>;
 }

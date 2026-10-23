@@ -21,7 +21,7 @@ export default function LiveBoard() {
 
       <div className="stats">
         <Stat label="Bags confirmed" value={`${Math.round((done / total) * 100)}%`} note={`${n(done)} of ${n(total)}`} />
-        <Stat label="Counters" value={COUNTERS.length} note={`${new Set(COUNTERS.map((c) => c.site)).size} warehouses`} />
+        <Stat label="Counters" value={COUNTERS.length} note={`${new Set(COUNTERS.flatMap((c) => c.sites ?? [c.site])).size} warehouses`} />
         <Stat label="Recounts out" value={recounts} tone={recounts ? "warn" : "ok"} />
         <Stat label="Counted in one day" value={`${n(sum(HOURLY, (h) => h.bags))} bags`} note="Target: whole universe in one day" />
       </div>
@@ -76,15 +76,16 @@ export default function LiveBoard() {
             <tbody>
               {COUNTERS.map((c) => {
                 const rate = c.bagsSoFar / (DAY.end - c.startedAt);
-                const siteTotal = cov.find((x) => x.site.code === c.site)!;
-                const finished = siteTotal.site.thirdParty && siteTotal.done >= siteTotal.total;
+                // Finished only when every warehouse the counter has is a third party that is fully counted.
+                const finished = (c.sites ?? [c.site]).every((code) => {
+                  const t = cov.find((x) => x.site.code === code);
+                  return !!t && t.site.thirdParty && t.done >= t.total;
+                });
                 const tone = c.bagsSoFar >= TARGET[0] ? "ok" : c.bagsSoFar >= TARGET[0] * 0.6 ? "warn" : "crit";
                 return (
                   <tr key={c.name}>
                     <td>{c.name}</td>
-                    <td className="muted">
-                      {site(c.site).short} · {c.area}
-                    </td>
+                    <td className="muted">{c.sites ? c.area : `${site(c.site).short} · ${c.area}`}</td>
                     <td className="num">{n(c.bagsSoFar)}</td>
                     <td className="num">{n(rate)}</td>
                     <td>

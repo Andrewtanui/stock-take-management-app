@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ChevronRight, Download, Info } from "lucide-react";
 import { exportReport } from "../data/excel";
-import { basketLines, threeWay, type ReconInput, type ReconRow } from "../data/recon";
+import { basketLines, bricBridge, threeWay, type ReconInput, type ReconRow } from "../data/recon";
+import BricBridge from "./BricBridge";
 import { TARGET_PCT } from "../data/repository";
 import { useStore } from "../data/store";
-import type { PrimaryBasket } from "../data/types";
 import { Chip, Code, Diff, PageHead, n, signed } from "../ui/kit";
 
 /** Average coffee value for value-at-risk (Kenya Variables sheet, setting AvgValueUsdPerTonne). */
@@ -15,7 +15,8 @@ export default function Reconciliation() {
   const store = useStore();
   const input: ReconInput = { counts: store.counts, stacks: store.stacks, baskets: store.baskets };
   const { primary, secondary, hasComtras, totals } = threeWay(input);
-  const [pb, setPb] = useState<PrimaryBasket | null>(null);
+  const [pb, setPb] = useState<string | null>(null);
+  const bridge = bricBridge(input, store.reconItems);
   const [sb, setSb] = useState<string | null>(null);
   const [onlyDiff, setOnlyDiff] = useState(false);
 
@@ -67,9 +68,9 @@ export default function Reconciliation() {
           </div>
         </div>
         <div className="stat">
-          <div className="stat-label">Comtras vs XBS</div>
-          <div className="stat-value">{hasComtras ? signed((totals.comtras ?? 0) - totals.xbsWhole, 1) : "No data"}</div>
-          <div className="stat-note">{hasComtras ? "60 kg equivalents" : "No Comtras extract loaded yet"}</div>
+          <div className="stat-label">BRIC vs Ibero, unexplained</div>
+          <div className="stat-value">{bridge ? signed(bridge.position.physical, 1) : "No data"}</div>
+          <div className="stat-note">{bridge ? `Of a BRIC total of ${n(bridge.bric, 0)} bags · after reconciling items` : "No Comtras P526 loaded yet"}</div>
         </div>
         <div className="stat">
           <div className="stat-label">Value at risk</div>
@@ -128,8 +129,8 @@ export default function Reconciliation() {
                 <tr
                   key={r.key}
                   tabIndex={0}
-                  onClick={() => (pb ? setSb(r.key) : setPb(r.key as PrimaryBasket))}
-                  onKeyDown={(e) => e.key === "Enter" && (pb ? setSb(r.key) : setPb(r.key as PrimaryBasket))}
+                  onClick={() => (pb ? setSb(r.key) : setPb(r.key))}
+                  onKeyDown={(e) => e.key === "Enter" && (pb ? setSb(r.key) : setPb(r.key))}
                 >
                   <td>{r.key === "—" ? <Chip tone="crit">No basket</Chip> : r.label}</td>
                   <Cells r={r} />
@@ -149,6 +150,8 @@ export default function Reconciliation() {
       ) : (
         <Lines input={input} basket={sb} onlyDiff={onlyDiff} />
       )}
+      <BricBridge input={input} />
+
       <p className="muted small">
         Physical comes from submitted count lines (a recount replaces the first count). XBS is the snapshot the stock take was set up from, Warehouse plus Blocked for
         Processing. Baskets follow the current basket mapping.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { allLines, can, site } from "../data/repository";
 import { useStore } from "../data/store";
@@ -33,10 +33,16 @@ export default function Variances() {
   const store = useStore();
   const allowed = can(store.role, "Decide variance causes");
   const [filter, setFilter] = useState<Variance["state"] | "all">("open");
-  const shown = store.variances.filter((v) => filter === "all" || v.state === filter);
+  const [causeFilter, setCauseFilter] = useState<RootCause | "all">("all");
+  // The cause on the card: the suggested one until someone picks another.
+  const causeOf = (v: Variance) => store.causes[v.id] ?? v.cause;
+  const inTab = store.variances.filter((v) => filter === "all" || v.state === filter);
+  const shown = inTab.filter((v) => causeFilter === "all" || causeOf(v) === causeFilter);
+  const causeCounts = CAUSES.map((c) => [c, inTab.filter((v) => causeOf(v) === c).length] as const).filter(([c, k]) => k > 0 || c === causeFilter);
   const [selId, setSelId] = useState<string | null>(shown[0]?.id ?? null);
   const sel = store.variances.find((v) => v.id === selId);
   const net = store.variances.reduce((a, v) => a + (v.counted - v.expected), 0);
+
 
   return (
     <div className="page">
@@ -62,7 +68,7 @@ export default function Variances() {
         value={filter}
         onChange={(f) => {
           setFilter(f);
-          setSelId(store.variances.find((v) => f === "all" || v.state === f)?.id ?? null);
+          setSelId(store.variances.find((v) => (f === "all" || v.state === f) && (causeFilter === "all" || causeOf(v) === causeFilter))?.id ?? null);
         }}
         items={(["open", "recount", "exception", "accepted", "all"] as const).map((k) => [
           k,
@@ -70,6 +76,36 @@ export default function Variances() {
           k === "all" ? store.variances.length : store.variances.filter((v) => v.state === k).length,
         ])}
       />
+
+      <fieldset className="causes cause-filter">
+        <legend className="field-label">Cause</legend>
+        <div className="cause-chips">
+          {[["all", "All causes", inTab.length] as const, ...causeCounts.map(([c, k]) => [c, c, k] as const)].map(([value, text, k]) => (
+            <label key={value} className="cause">
+              <input
+                type="radio"
+                name="cause-filter"
+                checked={causeFilter === value}
+                onChange={() => {
+                  setCauseFilter(value);
+                  setSelId(inTab.find((v) => value === "all" || causeOf(v) === value)?.id ?? null);
+                }}
+              />
+              <span>
+                {text} <em className="cause-n">{k}</em>
+              </span>
+            </label>
+          ))}
+        </div>
+        {causeFilter !== "all" && (
+          <p className="muted small cause-sum">
+            {shown.length} variance{shown.length === 1 ? "" : "s"} · net {signed(shown.reduce((a, v) => a + (v.counted - v.expected), 0))} units ·{" "}
+            <button className="link" onClick={() => setCauseFilter("all")}>
+              Show all causes
+            </button>
+          </p>
+        )}
+      </fieldset>
 
       <div className={"review" + (sel ? " review-open" : "")}>
         <ul className="vlist">
@@ -104,23 +140,57 @@ export default function Variances() {
               </li>
             );
           })}
-          {!shown.length && <li className="empty">Nothing here.</li>}
+          {!shown.length && <li className="empty">{causeFilter === "all" ? "Nothing here." : `No "${causeFilter}" variances here.`}</li>}
         </ul>
 
-        {sel && <Detail v={sel} allowed={allowed} onBack={() => setSelId(null)} />}
+        {sel && (
+          <Detail
+            key={sel.id}
+            v={sel}
+            allowed={allowed}
+            onBack={() => setSelId(null)}
+            // After a decision, go straight to the next variance in the list (the decided one leaves "Needs a decision").
+            onDecided={() => {
+              const i = shown.findIndex((x) => x.id === sel.id);
+              const next = shown.slice(i + 1).find((x) => x.state === "open") ?? shown.slice(0, i).find((x) => x.state === "open");
+              if (next) setSelId(next.id);
+            }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function Detail({ v, allowed, onBack }: { v: Variance; allowed: boolean; onBack: () => void }) {
+function Detail({ v, allowed, onBack, onDecided }: { v: Variance; allowed: boolean; onBack: () => void; onDecided: () => void }) {
   const store = useStore();
   const cause = store.causes[v.id] ?? v.cause;
   const xbsRows = allLines().filter((l) => l.o === v.outturn);
   const d = v.counted - v.expected;
 
+  // One page scroll: a panel taller than the window scrolls with the page until its end is in view,
+  // then stays put while the list carries on. A shorter panel just stays at the top.
+  const panel = useRef<HTMLElement>(null);
+  const [stickTop, setStickTop] = useState<number>();
+  useLayoutEffect(() => {
+    const el = panel.current;
+    if (!el) return;
+    const fit = () => {
+      const topbar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--topbar-h")) || 59;
+      setStickTop(Math.min(topbar + 20, window.innerHeight - el.offsetHeight - 20));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    window.addEventListener("resize", fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, []);
+
   return (
-    <article className="panel vdetail">
+    <article ref={panel} className="panel vdetail" style={stickTop === undefined ? undefined : { top: stickTop }}>
       <button className="link review-back" onClick={onBack}>
         <ArrowLeft size={16} aria-hidden /> Back to the list
       </button>
@@ -232,19 +302,41 @@ function Detail({ v, allowed, onBack }: { v: Variance; allowed: boolean; onBack:
       </section>
 
       {allowed && v.state === "open" && (
-        <div className="btn-row">
-          <button className="btn btn-primary" onClick={() => store.decideVariance(v.id, "recount")}>
-            Send blind recount
-          </button>
-          <button className="btn" disabled={cause === "Not yet known"} onClick={() => store.decideVariance(v.id, "accepted")}>
-            Accept the count
-          </button>
-          <button className="btn" onClick={() => store.decideVariance(v.id, "exception")}>
-            Raise exception
-          </button>
+        // Pinned to the bottom of the panel, so the decision is always in view.
+        <div className="vactions">
+          {cause === "Not yet known" && <p className="hint">Pick a cause before you accept the count.</p>}
+          <div className="btn-row">
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                store.decideVariance(v.id, "recount");
+                onDecided();
+              }}
+            >
+              Send blind recount
+            </button>
+            <button
+              className="btn"
+              disabled={cause === "Not yet known"}
+              onClick={() => {
+                store.decideVariance(v.id, "accepted");
+                onDecided();
+              }}
+            >
+              Accept the count
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                store.decideVariance(v.id, "exception");
+                onDecided();
+              }}
+            >
+              Raise exception
+            </button>
+          </div>
         </div>
       )}
-      {allowed && v.state === "open" && cause === "Not yet known" && <p className="hint">Pick a cause before you accept the count.</p>}
     </article>
   );
 }

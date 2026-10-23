@@ -138,6 +138,11 @@
           "entitySetName": "stk_allocationruns",
           "logicalName": "stk_allocationrun",
           "isHidden": false
+        },
+        "reconcilingitems": {
+          "entitySetName": "stk_reconitems",
+          "logicalName": "stk_reconitem",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

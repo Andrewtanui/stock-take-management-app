@@ -75,7 +75,10 @@ export interface ImportCheck {
   label: string;
   result: "pass" | "warn" | "fail";
   detail: string;
+  /** Example rows (some checks list only the first few). */
   rows: { ref: string; info: string }[];
+  /** How many rows the check found in all; `rows` may be a sample. */
+  count?: number;
 }
 
 export type SheetStatus = "In progress" | "Submitted" | "Approved" | "Rejected";
@@ -117,6 +120,8 @@ export interface StackInfo {
   site: SiteCode;
   name: string;
   status: string;
+  /** A third-party site the counter reported as having nothing to count. */
+  empty?: boolean;
 }
 
 export interface CountSheet {
@@ -186,6 +191,8 @@ export interface Check {
 export interface Counter {
   name: string;
   site: SiteCode;
+  /** Every warehouse the counter is assigned to (first = `site`); `area` then names them all. */
+  sites?: SiteCode[];
   area: string;
   bagsSoFar: number;
   startedAt: number;
@@ -306,6 +313,20 @@ export interface AllocationRun {
   present: string[];
   plan: import("./allocate").Plan;
   changes: AllocationChange[];
+  by?: string;
+  at?: string;
+}
+
+/** A line of Finance's bridge from the Comtras (BRIC) total to the Ibero stock position. */
+export interface ReconItem {
+  id?: string;
+  label: string;
+  kind: "Coffee afloat" | "Reconciling item";
+  /** 60 kg bags. Positive: BRIC has it, the warehouses don't (afloat, delivered after the count…). */
+  bags: number;
+  /** Also applies to the XBS column (e.g. afloat, longs); otherwise physical only. */
+  inXbs: boolean;
+  note?: string;
   by?: string;
   at?: string;
 }

@@ -26,6 +26,7 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 | `stk_outturnmap` | R | R | R | R | CRW | R |  |
 | `stk_stocktake` | R | CRW | R | R | RW | R |  |
 | `stk_counterprofile` |  | CRW | R | R | R | CRWD |  |
+| `stk_reconitem` |  | CRWD | R | R | CRWD | R |  |
 | `stk_allocationrun` |  | CRW | R | R | R | R |  |
 | `stk_assignment` | R | CRWD | R | R | R | R |  |
 | `stk_countsheet` | CRW (own) | RWA | RW | R | R | R |  |

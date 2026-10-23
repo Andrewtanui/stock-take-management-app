@@ -110,6 +110,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "stk_reconitems": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_reconitemid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "stk_recounts": {
     "tableId": "",
     "version": "",

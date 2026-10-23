@@ -3,6 +3,7 @@ import { CircleAlert, CircleCheck, CircleX, Download, FileSpreadsheet, Upload } 
 import { IMPORTS, SITES, can, importChecks } from "../data/repository";
 import { readXbsFiles, type XbsUpload } from "../data/xbs-parse";
 import { useStore } from "../data/store";
+import ComtrasImport from "./ComtrasImport";
 import { Chip, Code, PageHead, ReadOnly, type Tone } from "../ui/kit";
 
 const STATUS: Record<string, Tone> = { Imported: "ok", Validated: "info", Failed: "crit", Superseded: "neutral" };
@@ -18,7 +19,7 @@ export default function Import() {
   const [step, setStep] = useState<"pick" | "checked" | "done">("pick");
   const [open, setOpen] = useState<string | null>(null);
   const files = upload?.files ?? [];
-  const checks = upload ? importChecks(upload.lines, upload.unknownWarehouses) : [];
+  const checks = upload ? importChecks(upload.lines, upload.unknownWarehouses, store.baskets.map((b) => b.code)) : [];
 
   const choose = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -42,7 +43,7 @@ export default function Import() {
     <div className="page">
       <PageHead
         title="XBS import"
-        sub="Load the two XBS stock reports. They're checked before they become the expected stock for a count, and every import is kept for audit."
+        sub="Load the two XBS stock reports, and the Comtras position for the same month-end. They're checked before they're used, and every import is kept for audit."
         actions={
           <button className="btn">
             <Download size={18} aria-hidden /> Download templates
@@ -109,7 +110,7 @@ export default function Import() {
                     <strong>{c.label}</strong>
                     <span className="muted small">{c.detail}</span>
                   </span>
-                  {c.rows.length > 0 && <span className="link small">{open === c.id ? "Hide" : `Show ${c.rows.length}`}</span>}
+                  {c.rows.length > 0 && <span className="link small">{open === c.id ? "Hide" : `Show ${c.rows.length}${c.count && c.count > c.rows.length ? ` of ${c.count}` : ""}`}</span>}
                 </button>
                 {open === c.id && (
                   <div className="table-wrap inset">
@@ -143,7 +144,7 @@ export default function Import() {
                     lines: upload!.lines,
                     warnings: warns,
                     fails,
-                    checks: JSON.stringify(checks.map((c) => ({ id: c.id, label: c.label, result: c.result, detail: c.detail, count: c.rows.length }))),
+                    checks: JSON.stringify(checks.map((c) => ({ id: c.id, label: c.label, result: c.result, detail: c.detail, count: c.count ?? c.rows.length }))),
                   },
                   (done, total) => setProgress({ done, total }),
                 );
@@ -160,6 +161,8 @@ export default function Import() {
           )}
         </section>
       )}
+
+      <ComtrasImport allowed={allowed} />
 
       <section className="block">
         <h2 className="h3">Import history</h2>

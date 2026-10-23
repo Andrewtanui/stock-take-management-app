@@ -12,6 +12,13 @@ export default function Overview() {
   const go = useNav();
   const store = useStore();
   const st = store.stockTakes[0];
+  if (!st)
+    return (
+      <div className="page">
+        <Headline black="Overview" light="No stock take yet" />
+        <p className="empty">Import the XBS reports, review the pre-count checks, then start the stock take. The overview fills in once counting starts.</p>
+      </div>
+    );
   const cov = coverage();
   const total = sum(cov, (c) => c.total);
   const done = sum(cov, (c) => c.done);
