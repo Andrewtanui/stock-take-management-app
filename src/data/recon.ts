@@ -91,9 +91,18 @@ export function threeWay(input: ReconInput) {
   }
   for (const c of counts) row(basketOf(c)).physical += eq(c.kg);
   if (ctr) {
-    // Comtras books some stock under codes our mapping doesn't have: keep them visible, never drop them.
-    for (const code of ctr.keys())
-      if (!sec.has(code)) sec.set(code, { key: code, label: `${code} (in Comtras, not in the mapping)`, primary: NOT_MAPPED, xbsWhole: 0, xbs: 0, physical: 0, cover: 0 });
+    // Comtras codes with no XBS stock (e.g. the primary codes 10057 / 10027) take their basket from
+    // the mapping; codes the mapping doesn't have stay visible as "Not mapped", never dropped.
+    for (const code of ctr.keys()) {
+      if (sec.has(code)) continue;
+      const b = map.get(code);
+      sec.set(
+        code,
+        b
+          ? { key: code, label: `${code} ${b.name}`, primary: b.primary, xbsWhole: 0, xbs: 0, physical: 0, cover: 0 }
+          : { key: code, label: `${code} (in Comtras, not in the mapping)`, primary: NOT_MAPPED, xbsWhole: 0, xbs: 0, physical: 0, cover: 0 },
+      );
+    }
     for (const r of sec.values()) r.comtras = ctr.get(r.key) ?? 0;
   }
 

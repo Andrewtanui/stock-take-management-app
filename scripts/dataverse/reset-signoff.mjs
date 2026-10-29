@@ -32,5 +32,5 @@ if (DRY) {
 }
 
 for (const r of rows) await dv("DELETE", `stk_signoffs(${r.stk_signoffid})`);
-await dv("PATCH", `stk_stocktakes(${st.stk_stocktakeid})`, { stk_status: status(TO), stk_closedon: null, stk_closecomment: null });
+await dv("PATCH", `stk_stocktakes(${st.stk_stocktakeid})`, { stk_status: status(TO), stk_closedon: null, stk_closecomment: null, ...(TO === "Count in progress" ? { stk_countclosedon: null, stk_l1summary: null } : {}) });
 console.log(`Deleted ${rows.length} sign-off row(s); ${st.stk_name} is back in ${TO}.`);

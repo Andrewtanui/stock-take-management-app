@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { Check, Download, Mail, ShieldAlert } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ArrowRight, Check, Download, Mail, ShieldAlert } from "lucide-react";
 import { byWarehouse, netVariance } from "../data/recon";
-import { CHAIN, TARGET_PCT, TODAY, sum } from "../data/repository";
-import { PEOPLE, PREPARER, useStore } from "../data/store";
+import { TARGET_PCT, TODAY, openGates, sum, type GateDef } from "../data/repository";
+import { useStore } from "../data/store";
 import { Chip, Diff, PageHead, n, signed } from "../ui/kit";
 
 export default function SignOff() {
@@ -15,26 +15,32 @@ export default function SignOff() {
   const [comment, setComment] = useState("");
   const [ack, setAck] = useState(false);
 
+  const chain = store.chain;
+  const open = openGates(chain, store.signatures);
+  // The person viewing signs their own gate, when it is open.
+  const mineNow = open.find((g) => g.gate === store.myGate);
+  const first = !chain.some((g) => store.signatures[g.gate]);
   const openVar = store.variances.filter((v) => v.state === "open").length;
   const waitingSheets = store.sheets.filter((s) => s.status !== "Approved").length;
-  const nextIdx = CHAIN.findIndex((c) => !store.signatures[c.role]);
-  const next = CHAIN[nextIdx];
-  const mine = next?.role === store.role;
   const blockers = [
     openVar > 0 && `${openVar} variances still need a decision`,
     waitingSheets > 0 && `${waitingSheets} count sheets aren't approved yet`,
   ].filter(Boolean) as string[];
-  const blocked = nextIdx === 0 && blockers.length > 0;
-  const isPreparer = store.me === PREPARER;
+  const blocked = first && blockers.length > 0;
   // The SOP clock only runs once counting is over.
   const status = store.stockTakes[0]?.status;
   const clockRunning = status === "Reconciliation" || status === "Sign-off";
+  const tiers = [...new Set(chain.map((g) => g.tier))];
+  const who = (g: GateDef) => {
+    const s = store.signerOf(g.gate);
+    return `${s.name}${s.standIn ? ` (stand-in ${s.standIn.name})` : ""}`;
+  };
 
   return (
     <div className="page">
       <PageHead
         title="Sign-off"
-        sub={`${clockRunning ? `Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}.` : "Not started — counting is still open."} The SOP asks for sign-off within ${TODAY.signOffTarget} working days of the count. Each gate signs in order; the next signer is told in Teams.`}
+        sub={`${clockRunning ? `Day ${TODAY.signOffDay} of ${TODAY.signOffTarget}.` : "Not started — counting is still open."} The SOP asks for sign-off within ${TODAY.signOffTarget} working days of the count. Prepared, then reviewed, then approved; ${chain.at(-1)?.gate ?? "the last gate"} signs last. Each signer is told in Teams when it is their turn.`}
         actions={
           <>
             <button className="btn">
@@ -47,21 +53,47 @@ export default function SignOff() {
         }
       />
 
-      <ol className="steps">
-        {CHAIN.map((c, i) => {
-          const s = store.signatures[c.role];
-          const state = s ? "done" : i === nextIdx ? "active" : "todo";
-          return (
-            <li key={c.role} className={`step st-${state}`}>
-              <span className="step-dot">{s ? <Check size={16} aria-hidden /> : i + 1}</span>
-              <div>
-                <div className="step-who">{c.title}</div>
-                <div className="muted small">{s ? `${s.by} · ${s.at}` : `${PEOPLE[c.role]} · ${c.signs}`}</div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+      {/* Left to right: prepared, reviewed, approved. Within a tier the gates of one step sign in any
+          order; a later step in the same tier (Country Finance Manager) signs after them. */}
+      <section className="panel" aria-label="Sign-off chain">
+        <div className="signflow">
+          {tiers.map((tier, t) => {
+            const gates = chain.filter((g) => g.tier === tier);
+            return (
+              <Fragment key={tier}>
+                {t > 0 && (
+                  <span className="signflow-arrow" aria-hidden>
+                    <ArrowRight size={20} />
+                  </span>
+                )}
+                <div className="signflow-tier">
+                  <h2 className="signflow-head">{tier} by</h2>
+                  <ol className="signflow-gates">
+                    {gates.map((g, i) => {
+                      const s = store.signatures[g.gate];
+                      const state = s ? "done" : open.includes(g) ? "active" : "todo";
+                      const later = i > 0 && g.step > gates[i - 1].step;
+                      return (
+                        <Fragment key={g.gate}>
+                          {later && <li className="signflow-then muted small">then</li>}
+                          <li className={`step st-${state}`}>
+                            <span className="step-dot">{s ? <Check size={16} aria-hidden /> : chain.indexOf(g) + 1}</span>
+                            <div>
+                              <div className="step-who">{s?.by ?? who(g)}</div>
+                              <div className="small">{g.gate}</div>
+                              <div className="muted small">{s ? `Signed ${s.at}` : state === "active" ? "Can sign now" : "Waiting"}</div>
+                            </div>
+                          </li>
+                        </Fragment>
+                      );
+                    })}
+                  </ol>
+                </div>
+              </Fragment>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="panel">
         <div className="row-between">
@@ -120,39 +152,34 @@ export default function SignOff() {
             </tbody>
           </table>
         </div>
-        <p className="muted small">
-          By grade, with Operations and Trading comments per line, in the PDF and Excel pack. Prepared by {PREPARER} (Finance).
-        </p>
+        <p className="muted small">By grade, with Operations and Trading comments per line, in the PDF and Excel pack, which ends with the signature block above.</p>
       </section>
 
-      {CHAIN.some((c) => store.signatures[c.role]?.comment) && (
+      {chain.some((g) => store.signatures[g.gate]?.comment) && (
         <section className="panel">
           <h2 className="h3">Comments</h2>
           <ul className="plain">
-            {CHAIN.filter((c) => store.signatures[c.role]?.comment).map((c) => (
-              <li key={c.role}>
-                <strong>{c.title}:</strong> {store.signatures[c.role]!.comment}
-              </li>
-            ))}
+            {chain
+              .filter((g) => store.signatures[g.gate]?.comment)
+              .map((g) => (
+                <li key={g.gate}>
+                  <strong>{g.gate}:</strong> {store.signatures[g.gate]!.comment}
+                </li>
+              ))}
           </ul>
         </section>
       )}
 
-      {next ? (
+      {open.length ? (
         <section className="panel signbox">
           <h2 className="h3">
-            {mine ? `Your sign-off: ${next.title}` : `Waiting for ${next.title} (${PEOPLE[next.role]})`}
+            {mineNow ? `Your sign-off: ${mineNow.gate}` : `Waiting for ${open.map((g) => `${who(g)} (${g.gate})`).join(" and ")}`}
           </h2>
-          {!mine && <p className="muted">Switch "Viewing as" to {next.role} to sign this step.</p>}
-          {(isPreparer || next.role === "Finance") && (
-            <p className="readonly">
-              <ShieldAlert size={16} aria-hidden />{" "}
-              {isPreparer
-                ? "You prepared this pack, so you can't approve it."
-                : `Separation of duties: ${PREPARER} prepared this pack, so Finance sign-off has to come from someone else.`}
-            </p>
-          )}
-          {mine && blocked && (
+          {!mineNow && <p className="muted">Switch "Viewing as" to {open.map((g) => who(g)).join(" or ")} to sign.</p>}
+          <p className="readonly">
+            <ShieldAlert size={16} aria-hidden /> Separation of duties: one person signs one gate. A stand-in can sign for an absent signer.
+          </p>
+          {mineNow && blocked && (
             <div className="callout callout-warn">
               <div>
                 <strong>Not ready for sign-off.</strong>
@@ -164,7 +191,7 @@ export default function SignOff() {
               </div>
             </div>
           )}
-          {mine && !isPreparer && (
+          {mineNow && (
             <>
               <label className="field">
                 <span className="field-label">Comment</span>
@@ -172,23 +199,23 @@ export default function SignOff() {
               </label>
               <label className="check-line">
                 <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-                <span>I've reviewed this position: {next.signs.toLowerCase()}.</span>
+                <span>I've reviewed this position: {mineNow.signs.toLowerCase()}.</span>
               </label>
               <div className="btn-row">
                 <button
                   className="btn btn-primary"
                   disabled={!ack || blocked}
                   onClick={() => {
-                    store.sign(next.role, comment);
+                    store.sign(mineNow.gate, comment);
                     setComment("");
                     setAck(false);
                   }}
                 >
-                  Sign as {next.title}
+                  Sign as {mineNow.gate}
                 </button>
-                {nextIdx > 0 && (
-                  <button className="btn" disabled={!comment.trim()} onClick={() => (store.sendBack(next.role, comment), setComment(""))}>
-                    Send back to Operations
+                {!first && (
+                  <button className="btn" disabled={!comment.trim()} onClick={() => (store.sendBack(mineNow.gate, comment), setComment(""))}>
+                    Send back to {chain[0].gate}
                   </button>
                 )}
               </div>
@@ -199,7 +226,7 @@ export default function SignOff() {
         <section className="panel signbox">
           <h2 className="h3">Certified</h2>
           <p>
-            All four gates have signed. The sign-off pack went to the stock take distribution list. <Mail size={16} aria-hidden />
+            All {chain.length} gates have signed. The sign-off pack went to the stock take distribution list. <Mail size={16} aria-hidden />
           </p>
         </section>
       )}

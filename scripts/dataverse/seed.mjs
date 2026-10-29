@@ -44,6 +44,9 @@ const SETTINGS = [
   ["MappingApprovers", "andrew.tanui@pathwaystechnologies.com", "Who approves basket/outturn mapping changes (flow F6). Emails separated by ;. Set to the Finance approvers for go-live."],
   ["SignOffDistribution", "andrew.tanui@pathwaystechnologies.com", "Who gets the sign-off pack email when Finance certifies a stock take (flow F5). Emails separated by ;."],
   ["HeadsOfDepartment", "{\"Operations\": \"andrew.tanui@pathwaystechnologies.com\", \"Warehouse\": \"andrew.tanui@pathwaystechnologies.com\", \"Trading\": \"andrew.tanui@pathwaystechnologies.com\", \"Finance\": \"andrew.tanui@pathwaystechnologies.com\", \"Logistics\": \"andrew.tanui@pathwaystechnologies.com\", \"Quality\": \"andrew.tanui@pathwaystechnologies.com\", \"IT\": \"andrew.tanui@pathwaystechnologies.com\"}", "Department → head of department email, as JSON. Exceptions 3+ days overdue escalate here (flow F4)."],
+  ["AssistantEnabled", "false", "true = the Hub shows the Stock Assistant panel (Copilot Studio agent through flow F11). Only where the agent and F11 exist."],
+  ["Level1Runs", "Hub", "Who runs Level 1 (variances, automatic decisions, recounts, count close): Hub = the Hub when it opens; Engine = the server engine (stk-level1) and the Hub only reads, unless the engine has been silent 15 minutes during a count."],
+  ["CounterAppOpenAfterClose", "false", "true = the counter app still opens the latest stock take after counting has closed, with a notice (for demonstrations). Keep false in NKG and production."],
   ["CountReportDistribution", "andrew.tanui@pathwaystechnologies.com", "Who gets the count report the morning after the count (flow F8). Emails separated by ;. It shows XBS figures: never include counters (counting is blind)."],
   ["CountReportDate", "auto", "auto = report on the stock take counted yesterday (flow F8). A date (yyyy-MM-dd) re-sends the report for that count date; set back to auto afterwards."],
   ["AllocationRules", "{\"homeArea\": true, \"rotation\": true, \"thirdPartyClearance\": true}", "Random counter allocation: skip a counter's home rows, avoid repeating last stock take's area, third-party sites only for counters cleared to travel. JSON; set a rule to false to switch it off."],
@@ -135,6 +138,16 @@ console.log(`✓ ${SITES.length} warehouses`);
 for (const p of PACKS) await upsert("stk_packtype", "stk_code", p.code, { stk_name: p.name, stk_kgperbag: p.kg, stk_gradepattern: p.pattern });
 for (const [k, v, d] of SETTINGS) await upsert("stk_setting", "stk_name", k, { stk_value: v, stk_description: d });
 console.log(`✓ ${PACKS.length} packing types, ${SETTINGS.length} settings`);
+
+// The 2 Mar demo (XBS import, guessed basket mapping, stock take, assignment) is only for a fresh
+// environment. Once there is any import or stock take, re-running the seed adds settings only.
+const inUse =
+  (await dv("GET", `${await set("stk_xbsimport")}?$select=stk_xbsimportid&$top=1`)).value.length ||
+  (await dv("GET", `${await set("stk_stocktake")}?$select=stk_stocktakeid&$top=1`)).value.length;
+if (inUse) {
+  console.log("Environment already has XBS imports or stock takes: the 2 Mar demo data was not loaded.");
+  process.exit(0);
+}
 
 /* 3. XBS import: header (Validating) → lines (create only) → header Imported */
 const importId = await upsert("stk_xbsimport", "stk_name", IMPORT.name, {

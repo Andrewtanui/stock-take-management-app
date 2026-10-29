@@ -18,10 +18,12 @@ export const Stk_signoffsstk_action = {
 } as const;
 export type Stk_signoffsstk_action = keyof typeof Stk_signoffsstk_action;
 export const Stk_signoffsstk_gate = {
-  614500000: 'Operations',
-  614500001: 'Warehouse',
-  614500002: 'Trading',
-  614500003: 'Finance'
+  614500000: 'Operations Lead',
+  614500001: 'Warehouse Manager',
+  614500002: 'Trading Admin Manager',
+  614500003: 'Country Finance Manager',
+  614500004: 'Senior Accountant',
+  614500005: 'Chief Accountant'
 } as const;
 export type Stk_signoffsstk_gate = keyof typeof Stk_signoffsstk_gate;
 

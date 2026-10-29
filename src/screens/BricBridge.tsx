@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { bricBridge, type ReconInput } from "../data/recon";
-import { SITES, can } from "../data/repository";
+import { bridgeProposals, type Proposal } from "../data/bridge-proposals";
+import { SITES, allLines, can } from "../data/repository";
 import { useStore } from "../data/store";
 import type { ReconItem } from "../data/types";
 import { n } from "../ui/kit";
@@ -27,20 +28,40 @@ export default function BricBridge({ input }: { input: ReconInput }) {
     return (
       <section className="panel">
         <h2 className="h3">Comtras (BRIC) vs Ibero stock position</h2>
-        <p className="muted">Load the Comtras P526 for this stock take on the XBS import page; the bridge then works out here.</p>
+        <p className="muted">
+          Load the Comtras P526 for this stock take on the XBS import page; the
+          bridge then works out here.
+        </p>
       </section>
     );
 
-  // Suggested items: the net of the decided variances at each third-party site (stock BRIC still has,
-  // the warehouse didn't: delivered after the count, at another warehouse, short weights…).
-  const added = new Set(store.reconItems.map((i) => i.label));
-  const suggestions = SITES.filter((s) => s.thirdParty)
-    .map((s) => {
-      const vs = store.variances.filter((v) => v.site === s.code && v.state !== "open");
-      const kg = vs.reduce((a, v) => a + ((v.countedKg ?? v.counted * 60) - (v.expectedKg ?? v.expected * 60)), 0);
-      return { label: `${s.short}: differences decided on the Variances page`, bags: -kg / 60, n: vs.length };
-    })
-    .filter((x) => x.n > 0 && Math.abs(x.bags) >= 0.01 && !added.has(x.label));
+  // The items the Hub works out from its sources, for Finance to accept instead of typing them.
+  const proposals = bridgeProposals({
+    cutOff: store.kpiCountDate,
+    comtras: store.comtras?.lines,
+    journal: store.contractJournal?.lines,
+    shipments: store.shipments?.lines,
+    xbsStuffing: store.xbsStuffing?.rows,
+    variances: store.variances,
+    lines: allLines(),
+    sites: SITES,
+    items: store.reconItems,
+  });
+  const open = proposals.filter((p) => !p.onBridge && !p.similar?.length);
+  // Typed items that only share a warehouse name in their label are shown, never removed.
+  const accept = (p: Proposal) =>
+    store.addReconItem({
+      label: p.label,
+      kind: p.kind,
+      bags: p.bags,
+      inXbs: p.inXbs,
+      note: `Proposed by the Hub. ${p.source}`.slice(0, 2000),
+    });
+  const replace = (p: Proposal) => {
+    for (const i of p.similar ?? [])
+      if (i.id && !i.id.startsWith("tmp-")) store.removeReconItem(i.id);
+    accept(p);
+  };
 
   const add = (i: ReconItem) => {
     store.addReconItem(i);
@@ -49,7 +70,12 @@ export default function BricBridge({ input }: { input: ReconInput }) {
     setNote("");
     setInXbs(false);
   };
-  const row = (text: React.ReactNode, p: number | string, x: number | string, cls = "") => (
+  const row = (
+    text: React.ReactNode,
+    p: number | string,
+    x: number | string,
+    cls = "",
+  ) => (
     <tr className={cls}>
       <td>{text}</td>
       <td className="num">{typeof p === "number" ? neg(p) : p}</td>
@@ -58,7 +84,11 @@ export default function BricBridge({ input }: { input: ReconInput }) {
   );
   const remove = (i: ReconItem) =>
     allowed && i.id && !i.id.startsWith("tmp-") ? (
-      <button className="icon-btn icon-btn-sm" aria-label={`Remove ${i.label}`} onClick={() => store.removeReconItem(i.id!)}>
+      <button
+        className="icon-btn icon-btn-sm"
+        aria-label={`Remove ${i.label}`}
+        onClick={() => store.removeReconItem(i.id!)}
+      >
         <X size={14} aria-hidden />
       </button>
     ) : null;
@@ -68,7 +98,9 @@ export default function BricBridge({ input }: { input: ReconInput }) {
     <section className="panel bridge">
       <div className="row-between">
         <h2 className="h3">Comtras (BRIC) vs Ibero stock position</h2>
-        <span className="muted small">60 kg bags · as on Finance's month-end page</span>
+        <span className="muted small">
+          60 kg bags · as on Finance's month-end page
+        </span>
       </div>
       <div className="table-wrap">
         <table className="table bridge-table">
@@ -80,27 +112,50 @@ export default function BricBridge({ input }: { input: ReconInput }) {
             </tr>
           </thead>
           <tbody>
-            {row(<strong>Total BRIC (Comtras)</strong>, b.bric, b.bric, "total")}
+            {row(
+              <strong>Total BRIC (Comtras)</strong>,
+              b.bric,
+              b.bric,
+              "total",
+            )}
             <tr className="bridge-head">
               <td colSpan={3}>Ibero count results</td>
             </tr>
             {b.sites.map((s) => row(s.site.name, s.physical, s.xbsWhole))}
-            {row("Counted stock", b.counted.physical, b.counted.xbs, "subtotal")}
-            {b.afloatItems.length ? (
-              b.afloatItems.map((i) =>
-                row(
-                  <span className="bridge-item">
-                    {i.label} {remove(i)}
-                  </span>,
-                  i.bags,
-                  i.bags,
-                ),
-              )
-            ) : (
-              row(<span className="muted">Stuffed coffee, afloat: not entered yet</span>, "—", "—")
+            {row(
+              "Counted stock",
+              b.counted.physical,
+              b.counted.xbs,
+              "subtotal",
             )}
-            {row(<strong>Total Ibero</strong>, b.totalIbero.physical, b.totalIbero.xbs, "total")}
-            {row("Difference (BRIC expected vs Ibero)", b.difference.physical, b.difference.xbs)}
+            {b.afloatItems.length
+              ? b.afloatItems.map((i) =>
+                  row(
+                    <span className="bridge-item">
+                      {i.label} {remove(i)}
+                    </span>,
+                    i.bags,
+                    i.bags,
+                  ),
+                )
+              : row(
+                  <span className="muted">
+                    Stuffed coffee, afloat: not entered yet
+                  </span>,
+                  "—",
+                  "—",
+                )}
+            {row(
+              <strong>Total Ibero</strong>,
+              b.totalIbero.physical,
+              b.totalIbero.xbs,
+              "total",
+            )}
+            {row(
+              "Difference (BRIC expected vs Ibero)",
+              b.difference.physical,
+              b.difference.xbs,
+            )}
             <tr className="bridge-head">
               <td colSpan={3}>Reconciling items</td>
             </tr>
@@ -108,14 +163,23 @@ export default function BricBridge({ input }: { input: ReconInput }) {
               row(
                 <span className="bridge-item">
                   {i.label}
-                  {i.note ? <span className="muted small"> · {i.note}</span> : null} {remove(i)}
+                  {i.note ? (
+                    <span className="muted small"> · {i.note}</span>
+                  ) : null}{" "}
+                  {remove(i)}
                 </span>,
                 i.bags,
                 i.inXbs ? i.bags : "",
               ),
             )}
-            {!b.recon.length && row(<span className="muted">None yet</span>, "", "")}
-            {row("Total reconciling items", -b.itemsTotal.physical, -b.itemsTotal.xbs, "subtotal")}
+            {!b.recon.length &&
+              row(<span className="muted">None yet</span>, "", "")}
+            {row(
+              "Total reconciling items",
+              -b.itemsTotal.physical,
+              -b.itemsTotal.xbs,
+              "subtotal",
+            )}
             {row(
               <strong>BRIC vs Ibero stock position, unexplained</strong>,
               b.position.physical,
@@ -126,53 +190,163 @@ export default function BricBridge({ input }: { input: ReconInput }) {
         </table>
       </div>
       <p className="muted small">
-        Brackets are negative. Afloat counts in both columns; a reconciling item counts in the XBS column only when ticked (e.g. Kenyan longs). What's left
-        unexplained is what Finance's page shows as franchise.
+        Brackets are negative. Afloat counts in both columns; a reconciling item
+        counts in the XBS column only when ticked (e.g. Kenyan longs). What's
+        left unexplained is what Finance's page shows as franchise.
       </p>
 
       {allowed && (
         <div className="bridge-add">
           <div className="seg" role="group" aria-label="Kind">
             {(["Reconciling item", "Coffee afloat"] as const).map((k) => (
-              <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>
+              <button
+                key={k}
+                type="button"
+                aria-pressed={kind === k}
+                onClick={() => setKind(k)}
+              >
                 {k}
               </button>
             ))}
           </div>
-          <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={kind === "Coffee afloat" ? "Stuffed coffee, afloat" : "e.g. Sale 37 delivered after the count"} />
-          <input className="input bridge-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Bags" />
+          <input
+            className="input"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder={
+              kind === "Coffee afloat"
+                ? "Stuffed coffee, afloat"
+                : "e.g. Sale 37 delivered after the count"
+            }
+          />
+          <input
+            className="input bridge-qty"
+            inputMode="decimal"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            placeholder="Bags"
+          />
           {kind === "Reconciling item" && (
             <label className="check-line">
-              <input type="checkbox" checked={inXbs} onChange={(e) => setInXbs(e.target.checked)} /> Also in XBS column
+              <input
+                type="checkbox"
+                checked={inXbs}
+                onChange={(e) => setInXbs(e.target.checked)}
+              />{" "}
+              Also in XBS column
             </label>
           )}
-          <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" />
+          <input
+            className="input"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note (optional)"
+          />
           <button
             className="btn btn-primary"
-            disabled={!(label.trim() || kind === "Coffee afloat") || !Number.isFinite(Number(qty)) || !qty.trim()}
-            onClick={() => add({ label: label.trim() || "Stuffed coffee, afloat", kind, bags: Number(qty), inXbs: kind === "Coffee afloat" || inXbs, note: note.trim() || undefined })}
+            disabled={
+              !(label.trim() || kind === "Coffee afloat") ||
+              !Number.isFinite(Number(qty)) ||
+              !qty.trim()
+            }
+            onClick={() =>
+              add({
+                label: label.trim() || "Stuffed coffee, afloat",
+                kind,
+                bags: Number(qty),
+                inXbs: kind === "Coffee afloat" || inXbs,
+                note: note.trim() || undefined,
+              })
+            }
           >
             <Plus size={16} aria-hidden /> Add
           </button>
         </div>
       )}
 
-      {allowed && suggestions.length > 0 && (
+      {proposals.length > 0 && (
         <div className="bridge-suggest">
-          <h3 className="field-label">Suggested from the variance decisions</h3>
-          {suggestions.map((x) => (
-            <div key={x.label} className="row-between">
-              <span>
-                {x.label} <span className="muted small">({x.n} variances)</span>
-              </span>
-              <span>
-                <strong>{bags(x.bags)}</strong>{" "}
-                <button className="link" onClick={() => store.addReconItem({ label: x.label, kind: "Reconciling item", bags: Math.round(x.bags * 100) / 100, inXbs: false })}>
-                  Add
-                </button>
-              </span>
-            </div>
-          ))}
+          <div className="row-between">
+            <h3 className="field-label">Proposed by the Hub</h3>
+            {allowed && open.length > 1 && (
+              <button
+                className="btn btn-sm"
+                onClick={() => open.forEach(accept)}
+              >
+                Accept all {open.length}
+              </button>
+            )}
+          </div>
+          <p className="muted small">
+            Worked out from the P526, the 537, the shipment tracker and the
+            Level 1 decisions. Accept one to put it on the bridge with its
+            source in the note; you can still remove it. Sale 37 and coffee
+            under a broker's account need Trading's auction results and
+            Logistics' confirmations, so they stay typed.
+          </p>
+          <ul className="check-list">
+            {proposals.map((p) => {
+              const typed = p.similar ?? [];
+              const typedBags = typed.reduce((a, i) => a + i.bags, 0);
+              return (
+                <li key={p.label}>
+                  <div className="check-row">
+                    <span className="check-text">
+                      <strong>
+                        {p.label} · {bags(p.bags)}{" "}
+                        {p.kind === "Coffee afloat"
+                          ? "(afloat)"
+                          : p.inXbs
+                            ? "(both columns)"
+                            : "(physical column)"}
+                      </strong>
+                      <span className="muted small">{p.source}</span>
+                      {p.detail && (
+                        <span className="muted small">{p.detail}</span>
+                      )}
+                      {!p.onBridge && typed.length > 0 && (
+                        <span className="small">
+                          Typed on the bridge:{" "}
+                          {typed
+                            .map((i) => `${i.label} (${bags(i.bags)})`)
+                            .join(", ")}{" "}
+                          = {bags(typedBags)} · {bags(p.bags - typedBags)}{" "}
+                          apart.
+                        </span>
+                      )}
+                    </span>
+                    {p.onBridge ? (
+                      <span className="muted small">On the bridge</span>
+                    ) : (
+                      allowed &&
+                      (typed.length ? (
+                        !p.replaces ? (
+                          <span className="muted small">
+                            Typed items cover it
+                          </span>
+                        ) : (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => replace(p)}
+                            title={`Removes ${typed.map((i) => i.label).join(", ")} and adds the Hub's figure`}
+                          >
+                            Replace typed
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => accept(p)}
+                        >
+                          Accept
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </section>

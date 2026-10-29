@@ -22,6 +22,10 @@ const READ_REFERENCE = {
 const READ_ALL_MGMT = {
   ...READ_REFERENCE,
   stk_comtrasposition: "R",
+  stk_contractinvoice: "R",
+  stk_shipment: "R",
+  stk_directlot: "R",
+  stk_xbsstuffing: "R",
   stk_mappingchange: "R",
   stk_assignment: "R",
   stk_countsheet: "R",
@@ -36,6 +40,8 @@ const READ_ALL_MGMT = {
   stk_counterprofile: "R",
   stk_allocationrun: "R",
   stk_reconitem: "R",
+  stk_kpisnapshot: "R",
+  stk_enginerun: "R", // when the Level 1 engine last ran (Hub status)
   Note: "R", // photos on count lines and problem reports
 };
 
@@ -71,6 +77,7 @@ export const ROLES = [
       stk_variance: "CRW",
       stk_exception: "CRWA",
       stk_signoff: "CR",
+      stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
       stk_mappingchange: { G: "R", B: "CW" },
       stk_issue: "RWA",
       stk_site: "RP", // P = Append: needed to link warehouses to a stock take (N:N)
@@ -88,6 +95,7 @@ export const ROLES = [
       stk_variance: "RW",
       stk_exception: "CRWA",
       stk_signoff: "CR",
+      stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
     },
   },
   {
@@ -100,6 +108,7 @@ export const ROLES = [
       stk_exception: "CRWA",
       stk_mappingchange: { G: "R", B: "CW" },
       stk_signoff: "CR",
+      stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
     },
   },
   {
@@ -114,6 +123,7 @@ export const ROLES = [
       stk_variance: "RW",
       stk_exception: "CRWA",
       stk_signoff: "CR",
+      stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
       stk_stocktake: "RW", // records who prepared the pack
       stk_reconitem: "CRWD", // prepares the BRIC bridge: afloat and reconciling items
     },
@@ -133,15 +143,45 @@ export const ROLES = [
   },
   {
     name: "STK Importer",
-    about: "Loads XBS and Comtras snapshots. Create-only on the locked tables — no role can edit or delete them.",
+    about: "Loads XBS, Comtras, shipment tracker, XBS stuffing and direct purchase snapshots. Create-only on the locked tables — no role can edit or delete them.",
     tables: {
       stk_site: "R",
       stk_xbsimport: "CRW", // header status: Validating → Imported / Failed / Superseded
       stk_xbsline: "CR",
       stk_comtrasposition: "CR",
+      stk_contractinvoice: "CR",
+      stk_shipment: "CR",
+      stk_directlot: "CR",
+      stk_xbsstuffing: "CR",
+    },
+  },
+  {
+    name: "STK Engine",
+    about:
+      "For the Stock Assistant's engine (application user, not a person): reads every stk_ table, raises and updates its own rule exceptions in stk_exception, and keeps its own ibky_ tables (when that solution is installed).",
+    tables: {
+      ...READ_ALL_MGMT,
+      stk_exception: "CRWA", // engine checks upsert on stk_rulekey; A = owned by the department head; no delete
+    },
+    // Tables of another solution, matched by prefix, granted only where they exist.
+    prefixTables: { ibky_: "CRWD" },
+  },
+  {
+    name: "STK Level 1 Engine",
+    misc: ["ReadUser"], // counters' names in the explanations, department heads by email
+    about:
+      "For the server engine stk-level1 (application user, not a person), active only when setting Level1Runs = Engine: turns the count into variances, decides them by the Level 1 rules, sends blind recounts, raises exceptions (owned by the department head) and closes the count with its summary and PDF. Never deletes.",
+    tables: {
+      ...READ_ALL_MGMT,
+      stk_variance: "CRW",
+      stk_recount: "CRWA", // A = the recount belongs to the counter who does it
+      stk_exception: "CRWA", // A = owned by the department head
+      stk_stocktake: "RW", // count closed + Level 1 summary
+      stk_enginerun: "CRW", // its run log and lock
+      Note: "CRW", // the Level 1 summary PDF on the stock take
     },
   },
 ];
 
 /** Tables whose rows must never be changed once created. Checked by create-roles.mjs. */
-export const LOCKED = ["stk_xbsline", "stk_comtrasposition"];
+export const LOCKED = ["stk_xbsline", "stk_comtrasposition", "stk_contractinvoice", "stk_shipment", "stk_directlot", "stk_xbsstuffing"];

@@ -19,6 +19,46 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "ibkyf11_hubasksthestockassistant": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
   "stk_allocationruns": {
     "tableId": "",
     "version": "",
@@ -47,6 +87,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "stk_contractinvoices": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_contractinvoiceid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "stk_counterprofiles": {
     "tableId": "",
     "version": "",
@@ -68,10 +115,24 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "stk_directlots": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_directlotid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "stk_directpurchases": {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_directpurchaseid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_engineruns": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_enginerunid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -86,6 +147,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_issueid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_kpisnapshots": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_kpisnapshotid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -128,6 +196,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_settingid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_shipments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_shipmentid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -177,6 +252,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_xbslineid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_xbsstuffings": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_xbsstuffingid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

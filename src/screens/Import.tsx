@@ -4,6 +4,10 @@ import { IMPORTS, SITES, can, importChecks } from "../data/repository";
 import { readXbsFiles, type XbsUpload } from "../data/xbs-parse";
 import { useStore } from "../data/store";
 import ComtrasImport from "./ComtrasImport";
+import ContractsImport from "./ContractsImport";
+import ShipmentsImport from "./ShipmentsImport";
+import XbsStuffingImport from "./XbsStuffingImport";
+import DirectImport from "./DirectImport";
 import { Chip, Code, PageHead, ReadOnly, type Tone } from "../ui/kit";
 
 const STATUS: Record<string, Tone> = { Imported: "ok", Validated: "info", Failed: "crit", Superseded: "neutral" };
@@ -163,6 +167,10 @@ export default function Import() {
       )}
 
       <ComtrasImport allowed={allowed} />
+      <ContractsImport allowed={allowed} />
+      <ShipmentsImport allowed={allowed} />
+      <XbsStuffingImport allowed={allowed} />
+      <DirectImport allowed={allowed} />
 
       <section className="block">
         <h2 className="h3">Import history</h2>

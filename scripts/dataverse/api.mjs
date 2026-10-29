@@ -7,18 +7,30 @@ let token;
 export async function dv(method, path, body, { solution, allow404 = false } = {}) {
   token ??= await getToken();
   for (let attempt = 1; ; attempt++) {
-    const res = await fetch(BASE + path, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        "Content-Type": "application/json; charset=utf-8",
-        "OData-MaxVersion": "4.0",
-        "OData-Version": "4.0",
-        ...(solution ? { "MSCRM.SolutionUniqueName": solution } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch(BASE + path, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json; charset=utf-8",
+          "OData-MaxVersion": "4.0",
+          "OData-Version": "4.0",
+          ...(solution ? { "MSCRM.SolutionUniqueName": solution } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      // A dropped connection (ECONNRESET etc.): wait and try again. The scripts only add, so a
+      // POST that did land shows up on the next run as "already exists".
+      if (attempt < 6) {
+        console.log(`   … connection dropped (${e.cause?.code ?? e.message}), retrying in ${attempt * 4}s`);
+        await new Promise((r) => setTimeout(r, attempt * 4000));
+        continue;
+      }
+      throw e;
+    }
     if (res.status === 404 && allow404) return null;
     if (res.status === 401 && attempt === 1) {
       token = await getToken();

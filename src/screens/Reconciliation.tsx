@@ -3,6 +3,8 @@ import { ChevronRight, Download, Info } from "lucide-react";
 import { exportReport } from "../data/excel";
 import { basketLines, bricBridge, threeWay, type ReconInput, type ReconRow } from "../data/recon";
 import BricBridge from "./BricBridge";
+import BricContracts from "./BricContracts";
+import AfloatPanel from "./AfloatPanel";
 import { TARGET_PCT } from "../data/repository";
 import { useStore } from "../data/store";
 import { Chip, Code, Diff, PageHead, n, signed } from "../ui/kit";
@@ -151,6 +153,8 @@ export default function Reconciliation() {
         <Lines input={input} basket={sb} onlyDiff={onlyDiff} />
       )}
       <BricBridge input={input} />
+      <BricContracts />
+      <AfloatPanel />
 
       <p className="muted small">
         Physical comes from submitted count lines (a recount replaces the first count). XBS is the snapshot the stock take was set up from, Warehouse plus Blocked for

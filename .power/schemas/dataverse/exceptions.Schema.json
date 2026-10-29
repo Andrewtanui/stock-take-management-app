@@ -533,6 +533,41 @@
           "required": true,
           "maxLength": 200
         },
+        "stk_priority": {
+          "type": "string",
+          "title": "Priority",
+          "x-ms-dataverse-attribute": "stk_priority",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "stk_priority",
+          "enum": [
+            "High",
+            "Medium",
+            "Low"
+          ],
+          "x-ms-enum-values": [
+            614500000,
+            614500001,
+            614500002
+          ],
+          "Color": [
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "025be2f9-cece-f111-a05a-7ced8d4931c7",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Priority",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "stk_priorityname": {
+          "type": "string",
+          "title": "stk_priorityname",
+          "x-ms-dataverse-attribute": "stk_priorityname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "stk_priorityName",
+          "x-ms-dataverse-attribute-of": "stk_priority",
+          "x-ms-read-only": true
+        },
         "stk_reference": {
           "type": "string",
           "title": "Reference",
@@ -549,6 +584,22 @@
           "x-ms-schema-name": "stk_resolution",
           "maxLength": 2000
         },
+        "stk_rule": {
+          "type": "string",
+          "title": "Rule",
+          "x-ms-dataverse-attribute": "stk_rule",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_rule",
+          "maxLength": 20
+        },
+        "stk_rulekey": {
+          "type": "string",
+          "title": "Rule key",
+          "x-ms-dataverse-attribute": "stk_rulekey",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "stk_rulekey",
+          "maxLength": 200
+        },
         "stk_source": {
           "type": "string",
           "title": "Source",
@@ -559,15 +610,18 @@
             "Count",
             "Import",
             "Pre-count check",
-            "Reconciliation"
+            "Reconciliation",
+            "IBKY engine"
           ],
           "x-ms-enum-values": [
             614500000,
             614500001,
             614500002,
-            614500003
+            614500003,
+            614500004
           ],
           "Color": [
+            null,
             null,
             null,
             null,

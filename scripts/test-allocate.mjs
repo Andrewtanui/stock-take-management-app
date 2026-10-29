@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const root = new URL("..", import.meta.url);
 const out = await build({
-  stdin: { contents: `export * from "./src/data/allocate"; export * from "./src/shared/sections"; export * from "./src/data/variance-rules"; export * from "./src/data/auto-decide";`, resolveDir: fileURLToPath(root), loader: "ts" },
+  stdin: { contents: `export * from "./src/data/allocate"; export * from "./src/shared/sections"; export * from "./src/data/variance-rules"; export * from "./src/data/auto-decide"; export * from "./src/data/close-count";`, resolveDir: fileURLToPath(root), loader: "ts" },
   bundle: true, format: "esm", platform: "node", write: false,
 });
-const { allocate, buildAreas, zoneInSections, sectionList, parseZone, pickRecounter, draftVariances, sortSections, sectionsWords, planAutoDecisions, AUTO_DEFAULTS } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+const { allocate, buildAreas, zoneInSections, sectionList, parseZone, pickRecounter, draftVariances, sortSections, sectionsWords, planAutoDecisions, AUTO_DEFAULTS, closeCheck, l1Summary } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
 
 const snap = JSON.parse(readFileSync(new URL("../src/data/xbs-2026-03-02.json", import.meta.url), "utf8"));
 const lines = (Array.isArray(snap) ? snap : snap.lines ?? Object.values(snap).find(Array.isArray)).filter((l) => l.t === "W" || l.t === "B");
@@ -140,15 +140,15 @@ check(unfinished.length === 0, "until the site is finished, lots nobody counted 
   const v = (id, o) => ({ id, key: `${o.site ?? "IBR"}|${o.stack ?? "A-01-1"}|${id}`, site: "IBR", stack: "A-01-1", outturn: id, expectedUnits: 10, countedUnits: 10, expectedKg: 600, countedKg: 600, cause: "Not yet known", state: "open", decided: false, ...o });
   const act = (p, id) => p.find((a) => a.id === id);
   const vs = [
-    v("m1", { outturn: "OUT1", stack: "A-01-1", countedUnits: 15 }),
-    v("m2", { outturn: "OUT1", stack: "B-02-1", countedUnits: 5 }),
+    v("m1", { outturn: "OUT1", stack: "A-01-1", countedUnits: 15, countedKg: 900 }),
+    v("m2", { outturn: "OUT1", stack: "B-02-1", countedUnits: 5, countedKg: 300 }),
     v("pk", { countedKg: 605 }),
     v("wl", { countedKg: 570 }),
-    v("tp1", { site: "AGL", stack: "", countedUnits: 0, cause: "Partial delivery: rest still at third party" }),
-    v("tp2", { site: "AGL", stack: "", countedUnits: 4, cause: "Unposted gate-out" }),
+    v("tp1", { site: "AGL", stack: "", countedUnits: 0, countedKg: 0, cause: "Partial delivery: rest still at third party" }),
+    v("tp2", { site: "AGL", stack: "", countedUnits: 4, countedKg: 240, cause: "Unposted gate-out" }),
     v("nx", { expectedUnits: 0, expectedKg: 0, countedUnits: 37, countedKg: 2198, cause: "Mapping error" }),
-    v("rc", { countedUnits: 8 }),
-    v("old", { countedUnits: 8, decided: true }),
+    v("rc", { countedUnits: 8, countedKg: 480 }),
+    v("old", { countedUnits: 8, countedKg: 480, decided: true }),
   ];
   const p = planAutoDecisions(vs, [], tp, AUTO_DEFAULTS);
   check(act(p, "m1")?.act === "accept" && act(p, "m2")?.act === "accept", "auto: over on one stack, short on another, netting to 0 - both accepted as moved");
@@ -157,13 +157,41 @@ check(unfinished.length === 0, "until the site is finished, lots nobody counted 
   check(act(p, "tp1")?.group === "site:AGL" && act(p, "tp2")?.group === "site:AGL", "auto: third-party lots short - one AGL exception between them");
   check(act(p, "nx")?.act === "exception" && act(p, "nx").rule === "Found, not in XBS", "auto: counted, not in XBS - exception");
   check(act(p, "rc")?.act === "recount", "auto: unexplained difference - blind recount");
+  const uo = planAutoDecisions([v("uo", { countedUnits: 11, countedKg: 603 })], [], tp, AUTO_DEFAULTS);
+  check(act(uo, "uo")?.act === "accept" && act(uo, "uo").rule === "Same weight, different bag count", "auto: one unit more but only 3 kg more - accepted, no recount");
   check(!act(p, "old"), "auto: a variance someone already decided is left alone");
+  check(act(p, "nx")?.priority === "High" && !act(p, "nx").group, "auto: 36.6 bags found, not in XBS - High, its own exception");
+  check(act(p, "wl")?.priority === "Low" && act(p, "wl").group === "low:IBR", "auto: 30 kg weight loss (0.5 bags) - Low, on the Ibero low-priority list");
+  const mid = planAutoDecisions([v("md", { expectedUnits: 0, expectedKg: 0, countedUnits: 5, countedKg: 300, cause: "Mapping error" })], [], tp, AUTO_DEFAULTS);
+  check(act(mid, "md")?.priority === "Medium" && !act(mid, "md").group, "auto: 5 bags - Medium, its own exception");
   check(planAutoDecisions(vs, [], tp, { ...AUTO_DEFAULTS, on: false }).length === 0, "auto: switched off - nothing decided");
   const f = (units, recount) => ({ lineId: String(Math.random()), site: "IBR", stack: "A-01-1", batch: "rc", outturn: "rc", grade: "", units, kg: units * 60, by: "x", at: "", other: false, recount });
-  const sent = [v("rc", { countedUnits: 8, state: "recount", decided: true })];
+  const sent = [v("rc", { countedUnits: 8, countedKg: 480, state: "recount", decided: true })];
   check(act(planAutoDecisions(sent, [f(8), f(8, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "exception", "auto: recount repeats the first count - exception");
   check(act(planAutoDecisions(sent, [f(9), f(8, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "review", "auto: recount disagrees with the first count - back to the supervisor");
   check(!act(planAutoDecisions(sent, [f(8)], tp, AUTO_DEFAULTS), "rc"), "auto: recount not in yet - waits");
+}
+
+// Level 1 closes on its own (close-count.ts).
+{
+  const base = { iberoStacks: ["A-01-1", "B-02-1"], submittedStacks: new Set(["A-01-1", "B-02-1"]), thirdPartySites: ["AGL"], closedSites: new Set(["AGL"]), openRecounts: 0, undecidedVariances: 0, countLines: 10 };
+  check(closeCheck(base).ready, "close: every stack in, sites closed, nothing open - closes");
+  const notIn = closeCheck({ ...base, submittedStacks: new Set(["A-01-1"]) });
+  check(!notIn.ready && notIn.missing[0] === "1 Ibero stack not submitted (B-02-1)", "close: an Ibero stack not submitted - waits and names it");
+  check(!closeCheck({ ...base, closedSites: new Set() }).ready, "close: a third-party site not finished - waits");
+  check(!closeCheck({ ...base, openRecounts: 2 }).ready && !closeCheck({ ...base, undecidedVariances: 1 }).ready, "close: open recounts or undecided variances - waits");
+  check(!closeCheck({ ...base, countLines: 0 }).ready, "close: nothing counted - waits");
+  const text = l1Summary({
+    stockTake: "Monthly Stock Take - 31/08/2026", closedAt: new Date("2026-09-03T09:00:00Z"),
+    sites: [{ name: "Ibero", xbs: 19400.5, physical: 19440.5 }, { name: "AGL", xbs: 5072.5, physical: 4196.5 }],
+    variances: { total: 686, accepted: 479, acceptedAutomatically: 479, exception: 207 }, recountsDone: 32, exceptions: { High: 9, Medium: 4, Low: 3 },
+  });
+  check(
+    text.includes(">AGL</td>") && text.includes(">5,072.5</td>") && text.includes(">-876.0</td>") && text.includes(">Total</td>") && text.includes(">24,473.0</td>") && text.includes(">23,637.0</td>") && text.includes(">-836.0</td>"),
+    "close: summary table with each warehouse and the total",
+  );
+  check(/>Accepted automatically<\/td><td[^>]*>479<\/td>/.test(text) && /High priority \(10 bags or more\)<\/td><td[^>]*>9<\/td>/.test(text), "close: summary variance and exception sections");
+  check(l1Summary({ stockTake: "x", closedAt: new Date(), sites: [{ name: "A <b>bad</b> name", xbs: 1, physical: 1 }], variances: { total: 0, accepted: 0, acceptedAutomatically: 0, exception: 0 }, recountsDone: 0, exceptions: { High: 0, Medium: 0, Low: 0 } }).includes("A &lt;b&gt;bad&lt;/b&gt; name"), "close: names are escaped in the summary");
 }
 
 console.log("\nPlan (seed " + plan.seed + "):");

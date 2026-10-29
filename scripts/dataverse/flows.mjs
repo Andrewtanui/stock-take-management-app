@@ -43,26 +43,48 @@ export const CONNECTION_REFERENCES = {
     displayName: "IBKY Stock Take · Outlook",
     api: "shared_office365",
   },
+  copilotstudio: {
+    logicalName: "stk_copilotstudio",
+    displayName: "IBKY Stock Take · Copilot Studio",
+    api: "shared_microsoftcopilotstudio",
+  },
 };
+
+/** F11: the Stock Assistant agent the Hub's side panel talks to (Copilot Studio schema name). */
+const ASSISTANT = "cr327_IBKYStockAssistant";
 
 const SHEET = { inProgress: 614500000, submitted: 614500001, approved: 614500002, sentBack: 614500003 };
 const ISSUE = { open: 614500000, inProgress: 614500001, resolved: 614500002 };
 const IMPORT = { imported: 614500001 };
 const CHANGE = { pending: 614500000, approved: 614500001, rejected: 614500002, basket: 614500000 };
 const PRIMARY_BASKET = { Plus: 614500000, FAQ: 614500001, Grinder: 614500002 };
-const SIGNOFF = { signed: 614500000, sentBack: 614500001, finance: 614500003 };
-const STOCKTAKE = { completed: 614500003 };
+const SIGNOFF = { signed: 614500000, sentBack: 614500001 };
+/** stk_gate values (schema.mjs): the first four were renamed in place on 28 Oct 2026. */
+const GATE = { operationsLead: 614500000, warehouseManager: 614500001, tradingAdmin: 614500002, countryFinance: 614500003, seniorAccountant: 614500004, chiefAccountant: 614500005 };
+const STOCKTAKE = { completed: 614500003, adHoc: 614500002 };
 const ALLOCATION = { published: 614500001 };
 /** F4: calendar days overdue before each escalation step. */
 const ESCALATE = { hodAfterDays: 3, cfmAfterDays: 7 };
 /** F8: share of a warehouse's XBS lines that must be counted before its difference is shown. */
 const COMPLETE_PCT = 95;
-/** Gate just signed → who signs next (CHAIN order: Operations → Warehouse → Trading → Finance). */
+/**
+ * "<stock take type>-<gate just signed>" → who signs next (the Hub's CHAINS in repository.ts).
+ * Monthly: Senior Accountant → Chief Accountant + Operations Lead → Trading Admin Manager + Warehouse
+ * Manager → Country Finance Manager. Ad hoc: Operations Lead → Warehouse Manager. 100%: Operations Lead →
+ * Warehouse Manager → Country Finance Manager. The last gate of each chain completes the stock take.
+ */
 const NEXT_GATE = {
-  614500000: "Warehouse — physical position by warehouse",
-  614500001: "Trading — contracts, blocks and basket allocation",
-  614500002: "Finance — certifies the stock position",
+  [`614500000-${GATE.seniorAccountant}`]: "Chief Accountant and Operations Lead (review, either order)",
+  [`614500000-${GATE.chiefAccountant}`]: "Operations Lead, if not yet signed; then Trading Admin Manager and Warehouse Manager",
+  [`614500000-${GATE.operationsLead}`]: "Chief Accountant, if not yet signed; then Trading Admin Manager and Warehouse Manager",
+  [`614500000-${GATE.tradingAdmin}`]: "Warehouse Manager, if not yet signed; then Country Finance Manager",
+  [`614500000-${GATE.warehouseManager}`]: "Trading Admin Manager, if not yet signed; then Country Finance Manager",
+  [`614500001-${GATE.operationsLead}`]: "Warehouse Manager",
+  [`614500001-${GATE.warehouseManager}`]: "Country Finance Manager",
+  [`614500002-${GATE.operationsLead}`]: "Warehouse Manager",
 };
+/** The gate that completes each type of stock take: Warehouse Manager on ad hoc, else Country Finance Manager. */
+const LAST_GATE_TEST = `if(equals(outputs('Get_stock_take')?['body/stk_type'], ${STOCKTAKE.adHoc}), equals(triggerOutputs()?['body/stk_gate'], ${GATE.warehouseManager}), equals(triggerOutputs()?['body/stk_gate'], ${GATE.countryFinance}))`;
 const EXC = { closed: 614500003, escalated: 614500002, open: 614500000, ownerLevel: 614500000, hodLevel: 614500001, cfmLevel: 614500002, sourceImport: 614500001, kindUnknown: 614500009, deptOperations: 614500000 };
 
 /** Import check (id from importChecks) → exception kind and department. */
@@ -161,6 +183,34 @@ const when = (test, yes, no, runAfter) => ({
 });
 
 const after = (name) => ({ [name]: ["Succeeded"] });
+
+/** F11: Copilot Studio "Execute Agent and wait" with the Hub's question (and its conversation, for a follow-up). */
+function askAssistant(followUp) {
+  return {
+    type: "OpenApiConnectionWebhook",
+    inputs: {
+      host: { connectionName: "shared_microsoftcopilotstudio", operationId: "ExecuteCopilotAsyncV2", apiId: apiId("shared_microsoftcopilotstudio") },
+      parameters: {
+        Copilot: ASSISTANT,
+        "body/message": "@triggerBody()?['text']",
+        ...(followUp ? { "x-ms-conversation-id": "@triggerBody()?['text_1']" } : {}),
+      },
+      authentication: auth,
+    },
+    runAfter: {},
+  };
+}
+
+/** F11: "Respond to a PowerApp or flow" with the same fields on success and failure. */
+function answerHub(body, status) {
+  const text = (title) => ({ title, type: "string", "x-ms-content-hint": "TEXT", "x-ms-dynamically-added": true });
+  return {
+    type: "Response",
+    kind: "PowerApp",
+    inputs: { statusCode: 200, body, schema: { type: "object", properties: { answer: text("answer"), conversation: text("conversation"), raw: text("raw"), error: text("error") } } },
+    runAfter: { New_or_follow_up: status },
+  };
+}
 
 /** Teams "Post message in a chat or channel" as Flow bot. */
 function teamsPost(recipient, html, runAfter) {
@@ -402,26 +452,42 @@ export function flows(cfg) {
     },
     {
       name: "IBKY F5 · Sign-off chain",
-      description: "On each sign-off row: announce it and the next gate; on a send-back say sign-off restarts; stop the preparer signing Finance; after Finance signs, email the pack and mark the stock take Completed.",
+      description: "On each sign-off row: announce it and who signs next; on a send-back say sign-off restarts; one person signs one gate; after the chain's last gate (Country Finance Manager, or Warehouse Manager on an ad hoc count) email the pack and mark the stock take Completed.",
       data: clientdata("When_a_gate_signs_or_sends_back", rowTrigger("stk_signoff", 1), {
-        Get_stock_take: getRow("stk_stocktakes", trig("_stk_stocktake_value"), "stk_name,stk_countdate,_stk_preparedby_value", null),
+        Get_stock_take: getRow("stk_stocktakes", trig("_stk_stocktake_value"), "stk_name,stk_countdate,stk_type", null),
         Get_signer: getRow("systemusers", trig("_stk_signedby_value"), "fullname,internalemailaddress", "Get_stock_take"),
         Get_SoD: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'EnforceSeparationOfDuties'", top: 1 }, "Get_signer"),
+        // Signatures before the latest send-back no longer count.
+        Get_last_send_back: listRows(
+          "stk_signoffs",
+          { select: "stk_signedon", filter: `_stk_stocktake_value eq @{triggerOutputs()?['body/_stk_stocktake_value']} and stk_action eq ${SIGNOFF.sentBack}`, orderBy: "stk_signedon desc", top: 1 },
+          "Get_SoD",
+        ),
+        Get_signers_other_gates: listRows(
+          "stk_signoffs",
+          {
+            select: "stk_gate",
+            filter:
+              `_stk_stocktake_value eq @{triggerOutputs()?['body/_stk_stocktake_value']} and stk_action eq ${SIGNOFF.signed} and _stk_signedby_value eq @{triggerOutputs()?['body/_stk_signedby_value']} ` +
+              `and stk_gate ne @{triggerOutputs()?['body/stk_gate']} and stk_signedon gt @{coalesce(first(outputs('Get_last_send_back')?['body/value'])?['stk_signedon'], '1900-01-01T00:00:00Z')}`,
+          },
+          "Get_last_send_back",
+        ),
         Signed_or_sent_back: when(
           `equals(triggerOutputs()?['body/stk_action'], ${SIGNOFF.sentBack})`,
           {
             Announce_send_back: teamsPost(
               channel,
               `<p><b>Sign-off sent back</b> — ${label("stk_gate")} (${field("Get_signer", "fullname")}) sent back ${field("Get_stock_take", "stk_name")}.</p>` +
-                `<p>Reason: ${trig("stk_comment")}</p><p>Sign-off starts again from Operations once it's fixed.</p>`,
+                `<p>Reason: ${trig("stk_comment")}</p><p>Sign-off starts again from the first gate once it's fixed.</p>`,
               null,
             ),
           },
           {
-            Preparer_signed_Finance: when(
-              `and(equals(triggerOutputs()?['body/stk_gate'], ${SIGNOFF.finance}), equals(toLower(coalesce(first(outputs('Get_SoD')?['body/value'])?['stk_value'], 'false')), 'true'), equals(triggerOutputs()?['body/_stk_signedby_value'], outputs('Get_stock_take')?['body/_stk_preparedby_value']))`,
+            Signer_has_another_gate: when(
+              `and(equals(toLower(coalesce(first(outputs('Get_SoD')?['body/value'])?['stk_value'], 'false')), 'true'), greater(length(outputs('Get_signers_other_gates')?['body/value']), 0))`,
               {
-                // Separation of duties: the person who prepared the reconciliation can't certify it.
+                // Separation of duties: one person signs one gate.
                 Remove_signature: {
                   type: "OpenApiConnection",
                   inputs: {
@@ -433,13 +499,13 @@ export function flows(cfg) {
                 },
                 Tell_the_signer: teamsPost(
                   { kind: "chat", email: field("Get_signer", "internalemailaddress") },
-                  `<p><b>Your Finance sign-off on ${field("Get_stock_take", "stk_name")} was removed</b> — you prepared this reconciliation, so someone else in Finance must certify it.</p>`,
+                  `<p><b>Your ${label("stk_gate")} sign-off on ${field("Get_stock_take", "stk_name")} was removed</b> — you already signed another gate, and one person signs one gate. Ask the gate's signer or their stand-in to sign it.</p>`,
                   "Remove_signature",
                 ),
               },
               {
                 Last_gate: when(
-                  `equals(triggerOutputs()?['body/stk_gate'], ${SIGNOFF.finance})`,
+                  LAST_GATE_TEST,
                   {
                     Get_distribution: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'SignOffDistribution'", top: 1 }, null),
                     Get_signatures: listRows(
@@ -497,7 +563,7 @@ export function flows(cfg) {
                           "emailMessage/To": "@{first(outputs('Get_distribution')?['body/value'])?['stk_value']}",
                           "emailMessage/Subject": `Stock take signed off: ${field("Get_stock_take", "stk_name")}`,
                           "emailMessage/Body":
-                            `<p><b>${field("Get_stock_take", "stk_name")}</b> (count date ${field("Get_stock_take", "stk_countdate")}) has been signed off by all four gates and is now <b>Completed</b>.</p>` +
+                            `<p><b>${field("Get_stock_take", "stk_name")}</b> (count date ${field("Get_stock_take", "stk_countdate")}) has been signed off by every gate and is now <b>Completed</b>.</p>` +
                             "<p>@{length(outputs('Get_variances')?['body/value'])} variances (attached as CSV) · @{length(outputs('Get_open_exceptions')?['body/value'])} exceptions still open.</p>" +
                             "<h3>Sign-off</h3>@{body('Signature_table')}" +
                             `<p><a href="${APP_LINK.management}">Open the management app</a> for the full reconciliation.</p>`,
@@ -511,12 +577,12 @@ export function flows(cfg) {
                     Mark_completed: updateRow(
                       "stk_stocktakes",
                       trig("_stk_stocktake_value"),
-                      { stk_status: STOCKTAKE.completed, stk_closedon: "@utcNow()", stk_closecomment: "Signed off by Operations, Warehouse, Trading and Finance." },
+                      { stk_status: STOCKTAKE.completed, stk_closedon: "@utcNow()", stk_closecomment: "Signed off by every gate of its sign-off chain." },
                       "Email_the_pack",
                     ),
                     Announce_completed: teamsPost(
                       channel,
-                      `<p><b>Stock take signed off</b> — ${field("Get_stock_take", "stk_name")} is Completed. Finance (${field("Get_signer", "fullname")}) certified it; the pack was emailed to the distribution list.</p>`,
+                      `<p><b>Stock take signed off</b> — ${field("Get_stock_take", "stk_name")} is Completed. ${label("stk_gate")} (${field("Get_signer", "fullname")}) signed last; the pack was emailed to the distribution list.</p>`,
                       "Mark_completed",
                     ),
                   },
@@ -524,7 +590,7 @@ export function flows(cfg) {
                     Announce_next_gate: teamsPost(
                       channel,
                       `<p><b>${label("stk_gate")} signed</b> ${field("Get_stock_take", "stk_name")} — ${field("Get_signer", "fullname")}${"@{if(empty(triggerOutputs()?['body/stk_comment']), '', concat(': ', triggerOutputs()?['body/stk_comment']))}"}</p>` +
-                        `<p>Next: <b>@{json('${JSON.stringify(NEXT_GATE)}')?[string(triggerOutputs()?['body/stk_gate'])]}</b></p>` +
+                        `<p>Next: <b>@{coalesce(json('${JSON.stringify(NEXT_GATE)}')?[concat(string(outputs('Get_stock_take')?['body/stk_type']), '-', string(triggerOutputs()?['body/stk_gate']))], 'see Sign-off')}</b></p>` +
                         `<p><a href="${APP_LINK.management}">Open Sign-off in the management app</a></p>`,
                       null,
                     ),
@@ -535,7 +601,7 @@ export function flows(cfg) {
               null,
             ),
           },
-          "Get_SoD",
+          "Get_signers_other_gates",
         ),
       }),
     },
@@ -910,6 +976,122 @@ export function flows(cfg) {
             },
             runAfter: after("List_assignments"),
           },
+        },
+      ),
+    },
+    {
+      name: "IBKY F10 · Count closed → Level 1 summary",
+      description:
+        "When counting closes on its own (every stack in, no recounts open, every variance decided), email the Level 1 summary the Hub wrote to CountReportDistribution in NKG branding, with the Level 1 PDF the Hub saved on the stock take attached, and post a short note in the channel. It shows XBS figures: never send it to counters.",
+      data: clientdata(
+        "When_the_count_closes",
+        rowTrigger("stk_stocktake", 3, { columns: "stk_countclosedon", filter: "stk_countclosedon ne null" }),
+        {
+          Get_distribution: listRows("stk_settings", { select: "stk_value", filter: "stk_name eq 'CountReportDistribution'", top: 1 }, null),
+          // The PDF the Hub saved as the stock take's "Level 1 summary" note (none: the email goes without it).
+          Get_the_pdf: listRows(
+            "annotations",
+            { select: "filename,documentbody", filter: `_objectid_value eq ${trig("stk_stocktakeid")} and subject eq 'Level 1 summary'`, top: 1 },
+            "Get_distribution",
+          ),
+          Attachments: {
+            type: "Select",
+            // The note holds base64 text; Outlook wants the file's bytes, or the PDF arrives corrupted.
+            inputs: { from: "@outputs('Get_the_pdf')?['body/value']", select: { Name: "@item()?['filename']", ContentBytes: "@base64ToBinary(item()?['documentbody'])" } },
+            runAfter: after("Get_the_pdf"),
+          },
+          Email_the_summary: {
+            type: "OpenApiConnection",
+            inputs: {
+              host: { connectionName: "shared_office365", operationId: "SendEmailV2", apiId: apiId("shared_office365") },
+              parameters: {
+                "emailMessage/To": "@{first(outputs('Get_distribution')?['body/value'])?['stk_value']}",
+                "emailMessage/Subject": `Counting closed: ${trig("stk_name")} - Level 1 summary`,
+                // The Hub's look in tables and inline styles (Outlook): grey page, white card, the green top
+                // bar, a headline, the summary block the Hub wrote, the primary button. Outlook blocks
+                // embedded images, so the bar carries the name in type; the logo is in the attached PDF.
+                "emailMessage/Body":
+                  `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5"><tr><td align="center" style="padding:24px 12px">` +
+                  `<table width="720" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e8e8e8;border-radius:16px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#000000">` +
+                  `<tr><td style="background:#006330;border-radius:16px 16px 0 0;padding:16px 24px">` +
+                  `<table width="100%" cellpadding="0" cellspacing="0"><tr>` +
+                  `<td style="font-family:Georgia,'Times New Roman',serif;font-size:19px;color:#ffffff">NKG East Africa</td>` +
+                  `<td style="text-align:right;font-size:13px;font-weight:700;color:#ffffff">Stock Management Hub</td></tr></table></td></tr>` +
+                  `<tr><td style="padding:26px 18px 6px">` +
+                  `<div style="font-size:26px;font-weight:800;padding:0 6px">Level 1 reconciliation complete</div>` +
+                  `<div style="font-size:16px;color:#5f5f5f;padding:4px 6px 0">${trig("stk_name")}</div>` +
+                  `<div style="font-size:14px;color:#5f5f5f;padding:10px 6px 22px">Every stack is in, no recount is open and every variance is decided. The stock take has moved to Reconciliation; Level 2 (Comtras) is next, then sign-off.</div>` +
+                  "@{replace(coalesce(triggerOutputs()?['body/stk_l1summary'], ''), decodeUriComponent('%0A'), '<br>')}" +
+                  `<div style="padding:24px 6px 10px"><a href="${APP_LINK.management}" style="background:#006330;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 18px;border-radius:12px;display:inline-block">Open the Stock Management Hub</a></div>` +
+                  `</td></tr>` +
+                  `<tr><td style="padding:14px 24px 20px;border-top:1px solid #e8e8e8;font-size:12px;color:#949494">` +
+                  `The summary is attached as a PDF. Internal: it contains XBS figures, so do not forward it to counters.<br>Sent by the Stock Management Hub &middot; Ibero Kenya Limited</td></tr>` +
+                  `</table></td></tr></table>`,
+                "emailMessage/Attachments": "@body('Attachments')",
+                "emailMessage/Importance": "Normal",
+              },
+              authentication: auth,
+            },
+            runAfter: after("Attachments"),
+          },
+          Post_to_the_channel: teamsPost(
+            channel,
+            `<p><b>Counting closed</b> — ${trig("stk_name")} is in Reconciliation. The Level 1 summary went to the count report list.</p>` +
+              `<p><a href="${APP_LINK.management}">Open the management app</a></p>`,
+            "Email_the_summary",
+          ),
+        },
+      ),
+    },
+    {
+      name: "IBKY F11 · Hub asks the Stock Assistant",
+      description:
+        "Called by the Stock Management Hub's Stock Assistant panel (management roles only, never the counter app). Sends the question to the Copilot Studio agent with Execute Agent and wait, in a new conversation or the one the Hub passes back, and returns the answer and the conversation id to the Hub.",
+      data: clientdata(
+        "When_the_Hub_asks",
+        {
+          type: "Request",
+          kind: "PowerAppV2",
+          inputs: {
+            schema: {
+              type: "object",
+              properties: {
+                text: { title: "Question", type: "string", description: "What the user asked", "x-ms-content-hint": "TEXT", "x-ms-dynamically-added": true },
+                text_1: { title: "Conversation", type: "string", description: "Conversation id from the last answer, empty for a new conversation", "x-ms-content-hint": "TEXT", "x-ms-dynamically-added": true },
+              },
+              required: ["text"],
+            },
+          },
+        },
+        {
+          // A follow-up continues the agent's conversation, so "and AGL?" keeps its context.
+          New_or_follow_up: when(
+            "empty(coalesce(triggerBody()?['text_1'], ''))",
+            { Ask_new: askAssistant(false) },
+            { Ask_follow_up: askAssistant(true) },
+          ),
+          Answer_the_Hub: answerHub(
+            {
+              answer: "@{coalesce(body('Ask_new')?['lastResponse'], body('Ask_follow_up')?['lastResponse'], '')}",
+              conversation: "@{coalesce(body('Ask_new')?['conversationId'], body('Ask_follow_up')?['conversationId'], triggerBody()?['text_1'], '')}",
+              // The agent's whole reply, so the panel can show what it sent while the answer field is confirmed.
+              raw: "@{string(coalesce(body('Ask_new'), body('Ask_follow_up')))}",
+              error: "",
+            },
+            ["Succeeded"],
+          ),
+          // Without this the Hub only sees "BadGateway / NoResponse" when the agent call fails
+          // (e.g. "Agent is not published"): it always gets an answer, with the reason.
+          Tell_the_Hub_it_failed: answerHub(
+            {
+              answer: "",
+              conversation: "@{coalesce(triggerBody()?['text_1'], '')}",
+              raw: "@{string(coalesce(body('Ask_new'), body('Ask_follow_up')))}",
+              // A failed connector call keeps its reason on the action's error, not in its body.
+              error: "@{coalesce(actions('Ask_new')?['error']?['message'], actions('Ask_follow_up')?['error']?['message'], body('Ask_new')?['message'], body('Ask_follow_up')?['message'], 'The Stock Assistant did not answer.')}",
+            },
+            ["Failed", "TimedOut"],
+          ),
         },
       ),
     },

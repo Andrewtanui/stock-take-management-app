@@ -10,7 +10,20 @@
   "buildEntryPoint": "index.html",
   "localAppUrl": "http://localhost:3001",
   "logoPath": "Default",
-  "connectionReferences": {},
+  "connectionReferences": {
+    "be3ff55a-3c98-489c-8715-e27f7f853434": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "ibkyf11_hubasksthestockassistant"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "1c74e5c4-c6d1-f111-a05a-7ced8d4931c7",
+        "workflowDisplayName": "IBKY F11 · Hub asks the Stock Assistant",
+        "workflowName": "1c74e5c4-c6d1-f111-a05a-7ced8d4931c7"
+      }
+    }
+  },
   "databaseReferences": {
     "default.cds": {
       "dataSources": {
@@ -142,6 +155,36 @@
         "reconcilingitems": {
           "entitySetName": "stk_reconitems",
           "logicalName": "stk_reconitem",
+          "isHidden": false
+        },
+        "kpisnapshots": {
+          "entitySetName": "stk_kpisnapshots",
+          "logicalName": "stk_kpisnapshot",
+          "isHidden": false
+        },
+        "engineruns": {
+          "entitySetName": "stk_engineruns",
+          "logicalName": "stk_enginerun",
+          "isHidden": false
+        },
+        "contractinvoicelines": {
+          "entitySetName": "stk_contractinvoices",
+          "logicalName": "stk_contractinvoice",
+          "isHidden": false
+        },
+        "shipments": {
+          "entitySetName": "stk_shipments",
+          "logicalName": "stk_shipment",
+          "isHidden": false
+        },
+        "directpurchaselots": {
+          "entitySetName": "stk_directlots",
+          "logicalName": "stk_directlot",
+          "isHidden": false
+        },
+        "xbsstuffings": {
+          "entitySetName": "stk_xbsstuffings",
+          "logicalName": "stk_xbsstuffing",
           "isHidden": false
         }
       },

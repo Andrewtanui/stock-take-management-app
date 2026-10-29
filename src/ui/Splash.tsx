@@ -1,12 +1,17 @@
 import { CloudOff, RotateCw } from "lucide-react";
+import { SLOGAN, SLOGAN_LINES } from "../shared/brand";
 
 /** Shown while the data source loads at start-up. */
 export function Splash() {
   return (
     <div className="splash" role="status" aria-live="polite">
       <img className="splash-logo" src="./brand/nkg-mark.svg" alt="NKG East Africa" />
+      <p className="splash-slogan" aria-label={SLOGAN}>
+        <span className="splash-slogan-1">{SLOGAN_LINES[0]}</span>
+        <span className="splash-slogan-2">{SLOGAN_LINES[1]}</span>
+      </p>
       <span className="spinner" aria-hidden />
-      <p>Loading the stock take…</p>
+      <p className="splash-status">Loading the stock take…</p>
     </div>
   );
 }
@@ -41,3 +46,4 @@ export function LoadError({ message, onRetry }: { message: string; onRetry: () =
     </div>
   );
 }
+

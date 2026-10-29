@@ -14,6 +14,7 @@ import type {
   Role,
   Site,
   SiteCode,
+  StockTakeType,
   UserRow,
   XbsImport,
   XbsLine,
@@ -61,13 +62,50 @@ export const site = (c: SiteCode) => SITES.find((s) => s.code === c)!;
 
 export const ROLES: Role[] = ["Operations Admin", "Warehouse Manager", "Trading", "Finance", "IT Admin"];
 
-/** The approval chain agreed with the business: each gate signs in order. */
-export const CHAIN: { role: Role; title: string; signs: string }[] = [
-  { role: "Operations Admin", title: "Operations", signs: "Counts complete, variances explained" },
-  { role: "Warehouse Manager", title: "Warehouse", signs: "Physical position by warehouse" },
-  { role: "Trading", title: "Trading", signs: "Contracts, blocks and basket allocation" },
-  { role: "Finance", title: "Finance", signs: "Certifies the stock position" },
+/** A sign-off gate: one job title on Finance's signature block. */
+export type Gate = "Senior Accountant" | "Chief Accountant" | "Operations Lead" | "Trading Admin Manager" | "Warehouse Manager" | "Country Finance Manager";
+
+export interface GateDef {
+  gate: Gate;
+  tier: "Prepared" | "Reviewed" | "Approved";
+  /** Gates sign by step: every gate of a step before any of the next; within a step, any order. */
+  step: number;
+  /** The app role that signs it ("Viewing as" in the demo). */
+  role: Role;
+  /** Who signs, unless the setting SignOffSigners names someone else. */
+  person: string;
+  signs: string;
+}
+
+/**
+ * Finance's signed month-end page (August 2026, signed 22 Sep): prepared, two reviews, three approvals,
+ * the Country Finance Manager last because that signature certifies the position.
+ */
+export const GATES: GateDef[] = [
+  { gate: "Senior Accountant", tier: "Prepared", step: 1, role: "Finance", person: "Caroline Ngwambu", signs: "The pack is complete: Level 1 and Level 2 done, bridge items supported" },
+  { gate: "Chief Accountant", tier: "Reviewed", step: 2, role: "Finance", person: "Lucy Maundu", signs: "The figures and the BRIC bridge" },
+  { gate: "Operations Lead", tier: "Reviewed", step: 2, role: "Operations Admin", person: "Margaret Mburu", signs: "Counts complete, variances and exceptions explained" },
+  { gate: "Trading Admin Manager", tier: "Approved", step: 3, role: "Trading", person: "Caroline Njambi", signs: "Contracts, blocks, afloat and longs" },
+  { gate: "Warehouse Manager", tier: "Approved", step: 3, role: "Warehouse Manager", person: "Luis Brian", signs: "Physical position by warehouse" },
+  { gate: "Country Finance Manager", tier: "Approved", step: 4, role: "Finance", person: "Carol Muthama", signs: "Certifies the stock position" },
 ];
+
+/** Who signs each type of stock take. Ad hoc and 100% counts take a shorter chain. */
+export const CHAINS: Record<StockTakeType, Gate[]> = {
+  "Monthly stock take": GATES.map((g) => g.gate),
+  "Ad hoc stock take": ["Operations Lead", "Warehouse Manager"],
+  "100% stock take": ["Operations Lead", "Warehouse Manager", "Country Finance Manager"],
+};
+
+export const chainFor = (type?: StockTakeType) => GATES.filter((g) => CHAINS[type ?? "Monthly stock take"].includes(g.gate));
+
+/** The gates that can sign now: the unsigned ones of the earliest step not yet complete. */
+export function openGates(chain: GateDef[], signed: Partial<Record<Gate, unknown>>) {
+  const left = chain.filter((g) => !signed[g.gate]);
+  if (!left.length) return [];
+  const step = Math.min(...left.map((g) => g.step));
+  return left.filter((g) => g.step === step);
+}
 
 /** What each role may change. Everyone can view. */
 export const PERMISSIONS: { area: string; can: Role[] }[] = [

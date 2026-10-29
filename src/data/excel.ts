@@ -3,6 +3,7 @@
 
 import writeXlsxFile, { type Cell, type Row as XRow } from "write-excel-file/browser";
 import type { ColKind, ReportOut } from "./reports";
+import { SLOGAN } from "../shared/brand";
 
 const FORMAT: Record<ColKind, string | undefined> = { text: undefined, int: "#,##0", num1: "#,##0.0", pct: "0.0%" };
 
@@ -24,6 +25,7 @@ export async function exportReport(name: string, stockTake: string, out: ReportO
     const data: XRow[] = [
       [{ value: t.title ? `${name} — ${t.title}` : name, type: String, fontWeight: "bold", fontSize: 14 }],
       [{ value: `${stockTake} · generated ${new Date().toLocaleString("en-GB")}`, type: String }],
+      [{ value: SLOGAN, type: String, fontWeight: "bold", textColor: "#006330" }],
       ...(out.note ? [[{ value: out.note, type: String }] as XRow] : []),
       [],
       t.columns.map((c) => ({ value: c.label, type: String, fontWeight: "bold" as const, backgroundColor: "#E6EFE2" })),

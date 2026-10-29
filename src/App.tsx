@@ -16,10 +16,12 @@ import {
   Settings,
   ShoppingBasket,
   Shuffle,
+  Target,
 } from "lucide-react";
-import { ROLES, TODAY } from "./data/repository";
+import { TODAY } from "./data/repository";
 import { PEOPLE, useStore } from "./data/store";
-import type { Role } from "./data/types";
+import { DATA_KIND } from "./data/source";
+import { SLOGAN } from "./shared/brand";
 import Overview from "./screens/Overview";
 import StockTakes from "./screens/StockTakes";
 import Allocate from "./screens/Allocate";
@@ -31,12 +33,15 @@ import Variances from "./screens/Variances";
 import Reconciliation from "./screens/Reconciliation";
 import Exceptions from "./screens/Exceptions";
 import SignOff from "./screens/SignOff";
+import Governance from "./screens/Governance";
 import Mapping from "./screens/Mapping";
 import DirectPurchases from "./screens/DirectPurchases";
 import Issues from "./screens/Issues";
 import Setup from "./screens/Setup";
 import Reports from "./screens/Reports";
 import { Logo } from "./ui/Logo";
+import Assistant from "./ui/Assistant";
+import { shortType } from "./data/scope";
 
 export type Page =
   | "overview"
@@ -50,6 +55,7 @@ export type Page =
   | "recon"
   | "exceptions"
   | "signoff"
+  | "governance"
   | "mapping"
   | "direct"
   | "issues"
@@ -96,6 +102,7 @@ export default function App() {
         { id: "recon", label: "Reconciliation", icon: Scale },
         { id: "exceptions", label: "Exceptions", icon: AlertOctagon, badge: overdue },
         { id: "signoff", label: "Sign-off", icon: PenLine },
+        { id: "governance", label: "Governance", icon: Target },
       ],
     },
     {
@@ -127,6 +134,7 @@ export default function App() {
     recon: <Reconciliation />,
     exceptions: <Exceptions />,
     signoff: <SignOff />,
+    governance: <Governance />,
     mapping: <Mapping />,
     direct: <DirectPurchases />,
     issues: <Issues />,
@@ -147,10 +155,10 @@ export default function App() {
               {store.me.split(" ").map((x) => x[0]).join("")}
             </span>
             <span className="role-label">Viewing as</span>
-            <select value={store.role} onChange={(e) => store.setRole(e.target.value as Role)}>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {PEOPLE[r]} · {r}
+            <select value={store.me} onChange={(e) => store.setPerson(e.target.value)}>
+              {PEOPLE.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} · {p.gate ?? p.role}
                 </option>
               ))}
             </select>
@@ -162,7 +170,7 @@ export default function App() {
           <button className="rail-st" onClick={() => go(current ? "stocktakes" : "import")}>
             <span className="rail-st-label">Current stock take</span>
             <span className="rail-st-name">
-              {current ? `${current.type === "Monthly stock take" ? "Monthly" : "100%"} · ${current.countDate.replace(/^\w+ /, "")}` : "None yet"}
+              {current ? `${shortType(current.type)} · ${current.countDate.replace(/^\w+ /, "")}` : "None yet"}
             </span>
             <span className="rail-st-row">
               <span>{current?.status ?? "Import XBS to start"}</span>
@@ -188,10 +196,15 @@ export default function App() {
               </div>
             ))}
           </nav>
-          <p className="rail-foot">
-            Design preview — actions work in this tab but aren't saved. Expected stock is the real XBS snapshot of 2 Mar 2026; other
-            figures are samples.
-          </p>
+          <div className="rail-end">
+            {DATA_KIND === "mock" && (
+              <p className="rail-foot">
+                Design preview — actions work in this tab but aren't saved. Expected stock is the real XBS snapshot of 2 Mar 2026; other
+                figures are samples.
+              </p>
+            )}
+            <p className="slogan">{SLOGAN}</p>
+          </div>
         </aside>
 
         <main className="main">
@@ -216,6 +229,8 @@ export default function App() {
           )}
           {screens[page]}
         </main>
+
+        <Assistant />
 
         {store.toast && (
           <div className="toast" role="status">

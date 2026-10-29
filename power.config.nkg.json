@@ -143,6 +143,31 @@
           "entitySetName": "stk_reconitems",
           "logicalName": "stk_reconitem",
           "isHidden": false
+        },
+        "kpisnapshots": {
+          "entitySetName": "stk_kpisnapshots",
+          "logicalName": "stk_kpisnapshot",
+          "isHidden": false
+        },
+        "engineruns": {
+          "entitySetName": "stk_engineruns",
+          "logicalName": "stk_enginerun",
+          "isHidden": false
+        },
+        "contractinvoicelines": {
+          "entitySetName": "stk_contractinvoices",
+          "logicalName": "stk_contractinvoice",
+          "isHidden": false
+        },
+        "shipments": {
+          "entitySetName": "stk_shipments",
+          "logicalName": "stk_shipment",
+          "isHidden": false
+        },
+        "directpurchaselots": {
+          "entitySetName": "stk_directlots",
+          "logicalName": "stk_directlot",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

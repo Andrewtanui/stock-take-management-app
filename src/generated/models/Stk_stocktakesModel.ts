@@ -21,7 +21,8 @@ export const Stk_stocktakesstk_status = {
 export type Stk_stocktakesstk_status = keyof typeof Stk_stocktakesstk_status;
 export const Stk_stocktakesstk_type = {
   614500000: 'Monthly',
-  614500001: '100% (zero-out)'
+  614500001: '100% (zero-out)',
+  614500002: 'Ad hoc'
 } as const;
 export type Stk_stocktakesstk_type = keyof typeof Stk_stocktakesstk_type;
 
@@ -32,10 +33,13 @@ export interface Stk_stocktakesBase {
   statuscode?: Stk_stocktakesstatuscode;
   stk_closecomment?: string;
   stk_closedon?: string;
+  stk_countclosedon?: string;
   stk_countdate?: string;
   "stk_import@odata.bind": string;
+  stk_l1summary?: string;
   stk_name: string;
   "stk_preparedby@odata.bind"?: string;
+  stk_scope?: string;
   stk_status?: Stk_stocktakesstk_status;
   stk_stocktakeid: string;
   stk_type?: Stk_stocktakesstk_type;

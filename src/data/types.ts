@@ -44,7 +44,7 @@ export interface Site {
 /** Who is using the app. Drives what they can change and which sign-off step is theirs. */
 export type Role = "Operations Admin" | "Warehouse Manager" | "Trading" | "Finance" | "IT Admin";
 
-export type StockTakeType = "Monthly stock take" | "100% stock take";
+export type StockTakeType = "Monthly stock take" | "100% stock take" | "Ad hoc stock take";
 export type StockTakeStatus = "Count in progress" | "Reconciliation" | "Sign-off" | "Completed";
 
 export interface StockTake {
@@ -55,6 +55,8 @@ export interface StockTake {
   countDate: string;
   importId: string;
   sites: SiteCode[];
+  /** What is counted (ad hoc counts); none = everything. */
+  scope?: import("./scope").StockScope;
   createdBy: string;
   sheets: { total: number; approved: number; pending: number; rejected: number };
 }
@@ -161,6 +163,8 @@ export interface Variance {
   zone: string;
   outturn: string;
   grade: string;
+  /** XBS batch no. of the lot (from the lot key), when known. */
+  batch?: string;
   expected: number;
   counted: number;
   /** Weights, when known; a lot can match on units and still differ in kg. */
@@ -174,6 +178,11 @@ export interface Variance {
   at: string;
   state: "open" | "recount" | "accepted" | "exception";
   ageHours: number;
+  /** ISO times: when the variance was raised and decided (governance KPIs). */
+  createdOn?: string;
+  decidedOn?: string;
+  /** Decided by the Level 1 rules, not a person. */
+  auto?: boolean;
 }
 
 export interface Check {
@@ -213,10 +222,19 @@ export interface Exception {
   status: "Open" | "In progress" | "Escalated" | "Closed";
   escalation: number; // 0 = owner, 1 = HOD, 2 = Country Finance Manager
   bags: number;
-  source: "Count" | "Import" | "Pre-count check" | "Reconciliation";
+  /** "IBKY engine": raised by the Stock Assistant's engine (mass balance, master data, ...). */
+  source: "Count" | "Import" | "Pre-count check" | "Reconciliation" | "IBKY engine";
   /** How it was fixed; required to close. */
   resolution?: string;
+  /** By size in 60 kg bags; Low ones are grouped into one list per warehouse. */
+  priority?: Priority;
+  /** ISO times and the stock take it belongs to (its name), for the governance KPIs. */
+  raisedOn?: string;
+  closedOn?: string;
+  stockTake?: string;
 }
+
+export type Priority = "High" | "Medium" | "Low";
 
 export type PrimaryBasket = "Plus" | "FAQ" | "Grinder";
 export interface BasketMap {

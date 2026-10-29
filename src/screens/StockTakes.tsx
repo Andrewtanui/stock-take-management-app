@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { CHAIN, IMPORTS, SITES, can, site } from "../data/repository";
+import { IMPORTS, chainFor, SITES, allLines, can, site } from "../data/repository";
+import { lineInScope, scopeWords, shortType, type StockScope } from "../data/scope";
+import { IBERO_ROWS, parseSection, sectionList, sectionsWords } from "../shared/sections";
 import { useStore } from "../data/store";
 import type { SiteCode, StockTakeType } from "../data/types";
-import { Chip, Dialog, PageHead, ReadOnly, Tabs, type Tone } from "../ui/kit";
+import { Chip, Dialog, PageHead, ReadOnly, Tabs, n, type Tone } from "../ui/kit";
 
 const TONE: Record<string, Tone> = { "Count in progress": "info", Reconciliation: "warn", "Sign-off": "warn", Completed: "ok" };
 
@@ -16,7 +18,8 @@ export default function StockTakes() {
   const allowed = can(store.role, "Create and close stock takes");
   const list = store.stockTakes.filter((s) => (filter === "mine" ? s.createdBy === store.me : filter === "open" ? s.status !== "Completed" : true));
   const st = store.stockTakes.find((s) => s.id === sel) ?? store.stockTakes[0];
-  const allSigned = CHAIN.every((c) => store.signatures[c.role]);
+  // The selected stock take's own chain (ad hoc and 100% counts take a shorter one).
+  const allSigned = !!st && chainFor(st.type).every((g) => store.signatures[g.gate]);
 
   return (
     <div className="page">
@@ -87,8 +90,8 @@ export default function StockTakes() {
             <dd>{st.countDate}</dd>
             <dt>XBS import</dt>
             <dd className="code">{st.importId}</dd>
-            <dt>Warehouses</dt>
-            <dd>{st.sites.map((c) => site(c).short).join(", ")}</dd>
+            <dt>{st.scope ? "Counts" : "Warehouses"}</dt>
+            <dd>{st.scope ? scopeWords(st.scope, (c) => site(c).short) : st.sites.map((c) => site(c).short).join(", ")}</dd>
             <dt>Created by</dt>
             <dd>{st.createdBy}</dd>
           </dl>
@@ -97,7 +100,7 @@ export default function StockTakes() {
               <button className="btn" disabled={!allSigned} onClick={() => setClosing(true)}>
                 Close stock take
               </button>
-              {!allSigned && <p className="muted small">Closes after all four sign-off gates have signed.</p>}
+              {!allSigned && <p className="muted small">Closes after {chainFor(st.type).map((g) => g.gate).join(", ")} have signed.</p>}
             </>
           )}
         </section>
@@ -120,15 +123,27 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
   // The count day (month-end), not necessarily today: the stock take is dated by when the bags are counted.
   const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
   const date = day ? day.split("-").reverse().join("/") : "";
-  const title = `${type === "Monthly stock take" ? "Monthly" : "100%"} Stock Take - ${date}`;
+  const title = `${shortType(type)} Stock Take - ${date}`;
   const chosen = all ? SITES.map((s) => s.code) : sites;
+  // Ad hoc: chosen warehouses and, at Ibero, whole rows and/or typed sections ("D1-7, C/D").
+  const adhoc = type === "Ad hoc stock take";
+  const [rows, setRows] = useState<string[]>([]);
+  const [more, setMore] = useState("");
+  const typed = more.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+  const badTokens = typed.filter((x) => !parseSection(x));
+  const sections = [...new Set([...rows, ...sectionList(more)])];
+  const scope: StockScope | undefined = adhoc ? { sites: chosen, sections: chosen.includes("IBR") ? sections : [] } : undefined;
+  const lots = adhoc ? allLines().filter((l) => lineInScope(scope, l.wh, l.z)).length : 0;
+  // The Hub works on one open stock take at a time: an ad hoc count would hide one still being signed.
+  const open = store.stockTakes.find((x) => x.status !== "Completed");
+  const blocked = adhoc && !!open;
 
   return (
     <Dialog title="New stock take" onClose={onClose}>
       <fieldset className="field">
         <legend className="field-label">Type</legend>
         <div className="seg">
-          {(["Monthly stock take", "100% stock take"] as StockTakeType[]).map((t) => (
+          {(["Monthly stock take", "Ad hoc stock take", "100% stock take"] as StockTakeType[]).map((t) => (
             <button key={t} type="button" aria-pressed={type === t} onClick={() => setType(t)}>
               {t}
             </button>
@@ -139,11 +154,17 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
             December and June. Bags move from an issuing team to a receiving team; counters use grid codes (A001–G014).
           </p>
         )}
+        {adhoc && (
+          <p className="hint">
+            Any day, to see where stock stands before month-end. Count chosen rows or warehouses; the Hub shows the differences only: no recounts, no
+            exceptions, a short sign-off (Operations Lead, then Warehouse Manager), and it isn't part of the monthly KPIs.
+          </p>
+        )}
       </fieldset>
       <label className="field">
         <span className="field-label">Count date</span>
         <input className="input" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-        <span className="hint">The day the bags are counted, usually the last day of the month.</span>
+        <span className="hint">{adhoc ? "The day the bags are counted. Use an XBS import from the same day." : "The day the bags are counted, usually the last day of the month."}</span>
       </label>
       <label className="field">
         <span className="field-label">Expected stock (XBS import)</span>
@@ -183,6 +204,37 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </fieldset>
+      {adhoc && chosen.includes("IBR") && (
+        <fieldset className="field">
+          <legend className="field-label">Ibero: what to count</legend>
+          <div className="checks-grid">
+            {[...IBERO_ROWS].map((r) => (
+              <label key={r} className="check-line">
+                <input type="checkbox" checked={rows.includes(r)} onChange={(e) => setRows((xs) => (e.target.checked ? [...xs, r] : xs.filter((x) => x !== r)))} />
+                Row {r}
+              </label>
+            ))}
+          </div>
+          <input className="input" value={more} onChange={(e) => setMore(e.target.value)} placeholder="More sections, e.g. D1-7, C/D" aria-label="More sections" />
+          <span className="hint">
+            {badTokens.length
+              ? `Not a section: ${badTokens.join(", ")}. Use a row (D), a row and bays (D1-7), or between two rows (C/D).`
+              : sections.length
+                ? `Counts ${sectionsWords(sections)}.`
+                : "Nothing ticked: the whole of Ibero is counted."}
+          </span>
+        </fieldset>
+      )}
+      {adhoc && (
+        <p className="hint">
+          {n(lots)} XBS lots in this scope (current XBS import). Counters are allocated to these sections only.
+        </p>
+      )}
+      {blocked && (
+        <p className="readonly">
+          {open!.title} is still open ({open!.status}). Close it first: the Hub works on one open stock take at a time.
+        </p>
+      )}
       <p className="hint">
         Title: <strong>{title}</strong>
       </p>
@@ -192,7 +244,7 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
         </button>
         <button
           className="btn btn-primary"
-          disabled={!chosen.length || !imp || !day}
+          disabled={!chosen.length || !imp || !day || blocked || badTokens.length > 0}
           onClick={() => {
             store.createStockTake({
               id: `ST-${Date.now().toString().slice(-6)}`,
@@ -202,6 +254,7 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
               countDate: date,
               importId: imp,
               sites: chosen,
+              scope,
               createdBy: store.me,
               sheets: { total: 0, approved: 0, pending: 0, rejected: 0 },
             });

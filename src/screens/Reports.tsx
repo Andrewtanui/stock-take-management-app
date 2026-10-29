@@ -17,6 +17,7 @@ export default function Reports() {
     issues: store.issues,
     variances: store.variances,
     signatures: store.signatures,
+    chain: store.chain.map((g) => ({ gate: g.gate, tier: g.tier, signs: g.signs, signer: store.signerOf(g.gate).name })),
     stockTake,
   };
 

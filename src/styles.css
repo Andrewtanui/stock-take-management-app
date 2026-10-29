@@ -74,7 +74,9 @@ p { margin: 0; }
 .nav-item[aria-current="page"] { background: var(--green-tint-2); color: var(--brand-neumann-green); font-weight: 700; }
 .nav-item[aria-current="page"] svg { color: var(--brand-neumann-green); }
 .badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--brand-neumann-red); color: var(--brand-white); font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; }
-.rail-foot { margin-top: auto; padding: 10px; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
+.rail-end { margin-top: auto; display: flex; flex-direction: column; gap: 4px; }
+.rail-end .slogan { padding: 10px; font-size: 12.5px; font-weight: 700; color: var(--brand-neumann-green); }
+.rail-foot { padding: 10px; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
 .main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 56px; }
 .main > * { max-width: 1320px; }
 .toast { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: 24px; max-width: 520px; padding: 12px 20px; border-radius: 999px; background: var(--brand-black); color: var(--brand-white); font-weight: 600; box-shadow: var(--shadow-2); }
@@ -329,6 +331,13 @@ body:has(.vactions) .toast { bottom: 104px; }
 .st-active { box-shadow: 0 0 0 2px var(--brand-neumann-green); }
 .st-active .step-dot { background: var(--brand-neumann-green); color: var(--brand-white); }
 .step-who { font-weight: 700; }
+/* Sign-off chain, left to right: a column per tier with arrows between. */
+.signflow { display: flex; align-items: flex-start; gap: 8px; }
+.signflow-tier { flex: 1 1 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.signflow-head { margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.signflow-gates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.signflow-then { text-align: center; }
+.signflow-arrow { flex: none; align-self: center; display: grid; place-items: center; width: 28px; color: var(--ink-3); }
 .signbox { box-shadow: 0 0 0 2px var(--brand-neumann-green); }
 .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: var(--r-md); }
 .callout-warn { background: color-mix(in srgb, var(--brand-yellow) 25%, var(--brand-white)); }
@@ -364,6 +373,8 @@ body:has(.vactions) .toast { bottom: 104px; }
   .bars li { grid-template-columns: 130px minmax(0, 1fr) 28px; }
   .compare-num { font-size: 22px; }
   .stages { border-radius: var(--r-lg); }
+  .signflow { flex-direction: column; align-items: stretch; }
+  .signflow-arrow { align-self: center; transform: rotate(90deg); }
 }
 @media (max-width: 560px) {
   .topbar { gap: 8px; padding: 0 12px 3px; }
@@ -379,12 +390,19 @@ body:has(.vactions) .toast { bottom: 104px; }
 
 /* ---------- start-up: loading and load error ---------- */
 .splash {
-  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 24px;
-  background: var(--brand-neumann-green); color: var(--brand-white); text-align: center;
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 24px;
+  background:
+    radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--brand-neumann-green) 82%, #3d8a3a) 0%, var(--brand-neumann-green) 48%, color-mix(in srgb, var(--brand-neumann-green) 70%, var(--brand-black)) 100%);
+  color: var(--brand-white); text-align: center;
 }
-.splash-logo { width: 240px; height: auto; }
+.splash-logo { width: clamp(220px, 34vw, 320px); height: auto; }
 .splash p { opacity: 0.9; }
-.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--brand-white) 30%, transparent); border-top-color: var(--brand-white); animation: spin 0.8s linear infinite; }
+/* The slogan as on NKG's artwork: a white panel, then the second line in yellow. */
+.splash-slogan { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0; opacity: 1 !important; text-transform: uppercase; font-weight: 900; line-height: 1; letter-spacing: 0.01em; }
+.splash-slogan-1 { padding: 8px 14px 6px; background: var(--brand-white); color: var(--brand-neumann-green); font-size: clamp(26px, 4.6vw, 46px); transform: rotate(-1deg); }
+.splash-slogan-2 { color: var(--brand-yellow); font-size: clamp(28px, 5vw, 50px); text-shadow: 0 2px 10px color-mix(in srgb, var(--brand-black) 25%, transparent); }
+.splash-status { margin: 0; font-size: 15px; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--brand-white) 28%, transparent); border-top-color: var(--brand-yellow); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .splash-card { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px; border-radius: var(--r-lg); background: var(--surface); color: var(--text); }
 .splash-card svg { color: var(--brand-neumann-red); }
@@ -441,3 +459,29 @@ body:has(.vactions) .toast { bottom: 104px; }
 .bridge-add .bridge-qty { flex: 0 0 110px; }
 .bridge-suggest { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--hair); }
 .icon-btn-sm { width: 24px; height: 24px; }
+
+/* Stock Assistant: side panel in the Hub (src/ui/Assistant.tsx) */
+.assistant-fab { position: fixed; z-index: 40; right: 20px; bottom: 20px; display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand-neumann-green); color: var(--brand-white); font-size: 14px; font-weight: 700; box-shadow: var(--shadow-2); }
+.assistant-fab:hover { background: color-mix(in srgb, var(--brand-neumann-green) 88%, var(--brand-black)); }
+.assistant { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); display: flex; flex-direction: column; background: var(--surface); box-shadow: var(--shadow-2), 0 0 0 1px var(--hair); }
+.assistant-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 16px 14px 20px; border-bottom: 1px solid var(--hair); }
+.assistant-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--page); }
+.assistant-empty { display: flex; flex-direction: column; gap: 12px; }
+.assistant-starters { display: flex; flex-wrap: wrap; gap: 6px; }
+.assistant-starters .chip { border: 0; cursor: pointer; background: var(--surface); box-shadow: var(--card-shadow); height: auto; min-height: 30px; padding: 6px 12px; white-space: normal; text-align: left; }
+.assistant-msg { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.assistant-msg.from-you { align-self: flex-end; align-items: flex-end; }
+.assistant-msg.from-assistant { align-self: flex-start; }
+.assistant-bubble { padding: 10px 14px; border-radius: var(--r-md); background: var(--surface); box-shadow: var(--card-shadow); font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.from-you .assistant-bubble { background: var(--brand-neumann-green); color: var(--brand-white); box-shadow: none; }
+.failed .assistant-bubble { background: color-mix(in srgb, var(--brand-neumann-red) 10%, var(--brand-white)); }
+.assistant-raw pre { max-height: 220px; overflow: auto; margin: 4px 0 0; padding: 8px; border-radius: var(--r-md); background: var(--surface); font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-input { display: flex; gap: 8px; align-items: flex-end; padding: 12px 16px 16px; border-top: 1px solid var(--hair); }
+.assistant-input .input { resize: none; }
+.assistant-input .btn { height: 42px; padding: 0 14px; }
+.from-assistant .assistant-bubble { white-space: normal; }
+.assistant-bubble p { margin: 0 0 8px; }
+.assistant-bubble p:last-child, .assistant-bubble ul:last-child { margin-bottom: 0; }
+.assistant-bubble ul { margin: 0 0 8px; padding-left: 18px; }
+.assistant-bubble li { margin: 2px 0; }
+.assistant-bubble .chip { height: 20px; padding: 0 8px; font-size: 11.5px; vertical-align: 1px; }

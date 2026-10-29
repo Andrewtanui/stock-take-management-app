@@ -35,7 +35,7 @@ const NEW_CAUSES = ["Partial delivery: rest still at third party", "Weight loss:
 
 export const CHOICES = {
   stk_stocktype: ["Stock type", ["Warehouse", "Blocked for processing"]],
-  stk_stocktaketype: ["Stock take type", ["Monthly", "100% (zero-out)"]],
+  stk_stocktaketype: ["Stock take type", ["Monthly", "100% (zero-out)", "Ad hoc"]], // Ad hoc added 27 Oct 2026
   stk_stocktakestatus: ["Stock take status", ["Count in progress", "Reconciliation", "Sign-off", "Completed"]],
   stk_sheetstatus: ["Count sheet status", ["In progress", "Submitted", "Approved", "Sent back"]],
   stk_stackstatus: ["Stack status", ["Not started", "In progress", "Submitted", "Approved", "Sent back"]],
@@ -61,10 +61,13 @@ export const CHOICES = {
   stk_rootcause: ["Root cause", [...ROOT_CAUSES, ...NEW_CAUSES]],
   stk_variancestate: ["Variance state", ["Open", "Recount sent", "Accepted", "Exception raised"]],
   stk_exceptionkind: ["Exception kind", [...ROOT_CAUSES, "Master data", "Third party", "Direct purchase", ...NEW_CAUSES]],
-  stk_exceptionsource: ["Exception source", ["Count", "Import", "Pre-count check", "Reconciliation"]],
+  // "IBKY engine" (added 25 Oct 2026): checks raised by Jones's engine (mass balance, master data, ...).
+  stk_exceptionsource: ["Exception source", ["Count", "Import", "Pre-count check", "Reconciliation", "IBKY engine"]],
   stk_exceptionstatus: ["Exception status", ["Open", "In progress", "Escalated", "Closed"]],
   stk_department: ["Department", ["Operations", "Warehouse", "Trading", "Finance", "Logistics", "Quality", "IT"]],
-  stk_gate: ["Sign-off gate", ["Operations", "Warehouse", "Trading", "Finance"]],
+  // Finance's signature block (28 Oct 2026). The first four were Operations, Warehouse, Trading and
+  // Finance; renamed in place, so 614500003 is still the last signature (it certifies and completes).
+  stk_gate: ["Sign-off gate", ["Operations Lead", "Warehouse Manager", "Trading Admin Manager", "Country Finance Manager", "Senior Accountant", "Chief Accountant"]],
   stk_issuecategory: [
     "Problem category",
     ["App not working", "Network or saving", "Lot not on the list", "Tag missing or unreadable", "Stack blocked or unsafe", "Third-party staff not available", "Other"],
@@ -166,6 +169,114 @@ export const TABLES = [
     ],
     lookups: [["stk_stocktake", "Stock take", "stk_stocktake"]],
   },
+  // Comtras "537" contract invoicing journal (added 26 Oct 2026): one row per booked invoice or
+  // credit-note line, Kenya (company CC) only, loaded once per stock take and never changed.
+  // stk_salescontract is the number XBS shows as "sales contract blocked to".
+  {
+    name: "stk_contractinvoice", display: "Contract invoice line", plural: "Contract invoice lines", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_rownumber", "Row in the file", int()],
+      ["stk_source", "Source file", s(200)],
+      ["stk_side", "Side", local("Customer", "Supplier")], // FIBU2 D / K
+      ["stk_account", "Account", s(20)], // FIBU3
+      ["stk_counterparty", "Counterparty", s(60)], // Kurz-Name
+      ["stk_profile", "Profile", s(10)],
+      ["stk_bookedon", "Booked on", date()],
+      ["stk_voucherdate", "Voucher date", date()],
+      ["stk_voucher", "Voucher", s(20)],
+      ["stk_doctype", "Document type", int()], // Symbol: 11 purchase invoice, 21 sales invoice, 65 / 71 credit notes...
+      ["stk_purchasecontract", "Purchase contract", s(20)],
+      ["stk_purchasecontractdate", "Purchase contract date", date()],
+      ["stk_salescontract", "Sales contract", s(20)],
+      ["stk_salescontractdate", "Sales contract date", date()],
+      ["stk_buybags", "Bought: bags", dec(2)],
+      ["stk_buykg", "Bought: kg", dec(2)],
+      ["stk_buy60", "Bought: 60 kg bags", dec(2)],
+      ["stk_buyvalue", "Bought: value", dec(2)],
+      ["stk_sellbags", "Sold: bags", dec(2)],
+      ["stk_sellkg", "Sold: kg", dec(2)],
+      ["stk_sell60", "Sold: 60 kg bags", dec(2)],
+      ["stk_sellvalue", "Sold: value", dec(2)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_rownumber"]],
+  },
+  // Shipment tracker (Trade / Logistics, Kenya_Operational_PL.xlsx sheet KENYA; added 27 Oct 2026): one
+  // row per sales contract + shipping instruction, loaded once per stock take and never changed.
+  // stk_salescontract joins the 537 (S.Ctr.) and XBS ("sales contract blocked to").
+  {
+    name: "stk_shipment", display: "Shipment", plural: "Shipments", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_rownumber", "Row in the file", int()],
+      ["stk_source", "Source file", s(200)],
+      ["stk_salescontract", "Sales contract", s(20)],
+      ["stk_purchasecontract", "Purchase contract", s(40)],
+      ["stk_si", "Shipping instruction", s(20)],
+      ["stk_buyer", "Buyer", s(100)],
+      ["stk_bags", "Bags", dec(2)],
+      ["stk_qualitycode", "Quality code", s(10)],
+      ["stk_quality", "Quality basket / grade", s(100)],
+      ["stk_packaging", "Packaging", s(60)],
+      ["stk_destination", "Destination country", s(60)],
+      ["stk_contractdate", "Contract date", date()],
+      ["stk_stuffedon", "Stuffed on", date()],
+      ["stk_sailedon", "Sailed on", date()],
+      ["stk_etapod", "ETA at port of discharge", date()],
+      ["stk_bl", "B/L number", s(40)],
+      ["stk_vessel", "Vessel", s(100)],
+      ["stk_status", "Contract status", s(20)], // Open · Closed · Cancelled, as Trade keys it
+      ["stk_usdvalue", "USD value", dec(2)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_rownumber"]],
+  },
+  // Direct purchase lots (Trading's list, Daniel; added 27 Oct 2026): one row per outturn and grade
+  // bought on a direct contract (905xx), loaded once per stock take and never changed. Explains
+  // coffee counted but not yet in XBS (received, not uploaded) and gives each outturn's baskets.
+  {
+    name: "stk_directlot", display: "Direct purchase lot", plural: "Direct purchase lots", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_rownumber", "Order in the upload", int()],
+      ["stk_source", "Source file", s(200)],
+      ["stk_sheet", "Sheet", s(40)],
+      ["stk_contract", "Contract", s(20)], // 905xx; "90579/90580" when the sheet doesn't say which
+      ["stk_contractdate", "Contract date", date()],
+      ["stk_grower", "Grower / mark", s(100)],
+      ["stk_outturn", "Outturn", s(20)],
+      ["stk_grade", "Grade", s(20)],
+      ["stk_bags", "Bags", dec(2)],
+      ["stk_pocketkg", "Pocket kg", dec(2)],
+      ["stk_kg", "Kg bought", dec(2)],
+      ["stk_cert", "Certification", s(60)],
+      ["stk_primary", "Primary basket", s(40)],
+      ["stk_secondary", "Secondary basket", s(60)],
+      ["stk_warrant", "Warrant", s(40)],
+      ["stk_warrantkg", "Warrant kg", dec(2)],
+      ["stk_receivedkg", "Received kg", dec(2)],
+      ["stk_warehouse", "Warehouse", s(40)],
+      ["stk_receivedon", "Received on", date()],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_rownumber"]],
+  },
+  // XBS stuffing dates (added 29 Oct 2026): XBS's "All Party Shipped Quantity Per Contract" report,
+  // summed per sales contract + SI + stuffing date - the warehouse's record of when coffee left,
+  // which corrects the shipment tracker's dates for afloat. One report per month; never changed.
+  {
+    name: "stk_xbsstuffing", display: "XBS stuffing", plural: "XBS stuffings", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_source", "Source file", s(200)],
+      ["stk_salescontract", "Sales contract", s(20)],
+      ["stk_si", "Shipping instruction", s(20)],
+      ["stk_stuffedon", "Stuffed on", date()],
+      ["stk_bags", "Bags (60 kg)", dec(2)],
+      ["stk_lots", "Lots", int()],
+      // "contract|SI|date": short enough for an alternate key (the name column is not).
+      ["stk_key", "Key", s(60)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_key"]],
+  },
   {
     name: "stk_mappingchange", display: "Mapping change", plural: "Mapping changes", own: "user", primary: ["Reference", 30],
     cols: [
@@ -195,13 +306,20 @@ export const TABLES = [
     keys: [["stk_name"]],
   },
   {
-    name: "stk_stocktake", display: "Stock take", plural: "Stock takes", own: "org", primary: ["Title", 100],
+    name: "stk_stocktake", display: "Stock take", plural: "Stock takes", own: "org", primary: ["Title", 100], notes: true, // Level 1 summary PDF
     cols: [
       ["stk_type", "Type", choice("stk_stocktaketype")],
       ["stk_status", "Status", choice("stk_stocktakestatus")],
       ["stk_countdate", "Count date", date()],
       ["stk_closedon", "Closed on", dt()],
       ["stk_closecomment", "Close comment", memo(2000)],
+      // Counting closed automatically (every stack in, no recounts open, every variance decided);
+      // flow F10 sends the Level 1 summary written here.
+      ["stk_countclosedon", "Count closed on", dt()],
+      ["stk_l1summary", "Level 1 summary", memo(20000)], // branded HTML, also the body of flow F10's email
+      // What is counted, as JSON {"sites":["IBR","AGL"],"sections":["D","B1-7"]}; empty = everything.
+      // Used by ad hoc counts (added 27 Oct 2026); sections are Ibero section tokens (src/shared/sections.ts).
+      ["stk_scope", "Scope", memo(4000)],
     ],
     lookups: [
       ["stk_import", "XBS import", "stk_xbsimport", true],
@@ -235,6 +353,46 @@ export const TABLES = [
       ["stk_note", "Note", memo(2000)],
     ],
     lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+  },
+  // Governance KPIs (added 26 Oct 2026): one row per stock take per KPI (src/data/kpi.ts).
+  // The Hub refreshes them while the stock take is open and freezes them when Finance signs;
+  // frozen rows are never recalculated. Read by Power BI and the Stock Assistant.
+  {
+    name: "stk_kpisnapshot", display: "KPI snapshot", plural: "KPI snapshots", own: "org", primary: ["Name", 200],
+    cols: [
+      ["stk_code", "KPI code", s(40)],
+      ["stk_kpiname", "KPI", s(100)],
+      ["stk_kpisource", "Target source", s(60)], // e.g. SOP-UG-LOG #104
+      ["stk_owner", "Owner", s(60)],
+      ["stk_value", "Value", dec(4)],
+      ["stk_display", "Value as shown", s(60)],
+      ["stk_target", "Target", s(60)],
+      ["stk_status", "Status", local("On target", "Off target", "Running", "For information", "Not measurable")],
+      ["stk_detail", "Detail", memo(1000)],
+      ["stk_measuredon", "Measured on", dt()],
+      ["stk_frozenon", "Frozen on", dt()], // set at Finance sign-off; the row no longer changes
+      // "<stock take id>|<KPI code>": one row per stock take per KPI.
+      ["stk_kpikey", "KPI key", s(200)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_kpikey"]],
+  },
+  // Level 1 engine runs (added 26 Oct 2026): one row per run of stk-level1 on the server, also its
+  // run lock. stk_lock holds the stock take id while a run writes (alternate key, so a second run
+  // can't take it) and is emptied when the run ends; a lock older than 15 minutes counts as stale.
+  {
+    name: "stk_enginerun", display: "Engine run", plural: "Engine runs", own: "org", primary: ["Run", 200],
+    cols: [
+      ["stk_mode", "Mode", local("Engine", "Dry run")],
+      ["stk_startedon", "Started on", dt()],
+      ["stk_finishedon", "Finished on", dt()],
+      ["stk_outcome", "Outcome", local("Running", "Done", "Failed", "Skipped")],
+      ["stk_result", "Result", memo(4000)],
+      ["stk_writes", "Records written", int()],
+      ["stk_lock", "Lock", s(100)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake"]],
+    keys: [["stk_lock"]],
   },
   {
     name: "stk_allocationrun", display: "Allocation run", plural: "Allocation runs", own: "org", primary: ["Reference", 30],
@@ -390,6 +548,12 @@ export const TABLES = [
       ["stk_duedate", "Due date", date()],
       ["stk_status", "Status", choice("stk_exceptionstatus")],
       ["stk_escalationlevel", "Escalation level", local("Owner", "Head of department", "Country Finance Manager")],
+      // By size in 60 kg bags (settings ExceptionHighBags / ExceptionLowBags); Low ones are one list per warehouse.
+      ["stk_priority", "Priority", local("High", "Medium", "Low")],
+      // Rule that raised it and a unique key per rule + subject, so a rule re-run updates its row
+      // instead of adding a duplicate (spec 8.5 / 12.3: one open exception per rule + key).
+      ["stk_rule", "Rule", s(20)],
+      ["stk_rulekey", "Rule key", s(200)],
       ["stk_resolution", "Resolution", memo(2000)],
       ["stk_closedon", "Closed on", dt()],
     ],
@@ -398,6 +562,7 @@ export const TABLES = [
       ["stk_variance", "Variance", "stk_variance"],
       ["stk_import", "XBS import", "stk_xbsimport"],
     ],
+    keys: [["stk_rulekey"]],
   },
   {
     name: "stk_signoff", display: "Sign-off", plural: "Sign-offs", own: "org", primary: ["Name", 60],

@@ -53,6 +53,14 @@ export function pocketProblem(q: Qty): string | null {
   return null;
 }
 
+/**
+ * A pocket heavier than two full bags is almost always a slip - a bag count or the lot's total typed
+ * as the pocket (Aug 2026, old app: 56 bags entered at 11 kg). Not an error: the counter confirms it.
+ */
+export function pocketWarning(q: Qty, kgPerBag: number): string | null {
+  return q.pocketKg > 2 * kgPerBag ? `A ${q.pocketKg} kg pocket is more than two full ${kgPerBag} kg bags. Check the weight: a pocket is the one odd bag.` : null;
+}
+
 export interface Compare {
   dUnits: number;
   dKg: number;

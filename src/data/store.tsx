@@ -6,10 +6,16 @@
 
 import type { ReconItem } from "./types";
 import type { ComtrasUpload } from "./comtras-parse";
-import type { ComtrasPosition } from "./source/types";
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { CHAIN, SITES, addImport, basketMap, setComtrasPosition, setReference } from "./repository";
+import type { ContractUpload } from "./contracts-parse";
+import type { ShipmentUpload } from "./shipments-parse";
+import type { XbsStuffingUpload } from "./xbs-shipped-parse";
+import type { DirectUpload } from "./direct-parse";
+import type { ComtrasPosition, ContractJournal, DirectLots, ShipmentTracker, XbsStuffingSet } from "./source/types";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { governanceKpis, type GovernanceData } from "./governance";
+import { GATES, SITES, addImport, chainFor, openGates, type Gate, basketMap, setComtrasPosition, setReference } from "./repository";
 import { getSource, type AllocationData, type DataSource, type MgmtData, type Signature, type XbsUploadToSave } from "./source";
+import type { Signer } from "./source/types";
 import { pickRecounter, type AllocCounter, type Plan } from "./allocate";
 import type {
   AuditEntry,
@@ -36,16 +42,27 @@ import { LoadError, Splash } from "../ui/Splash";
 /** A count line's identity: its Dataverse id, or where and by whom in the demo data. */
 const lineKeyOf = (l: CountRow) => l.id ?? `${l.site}|${l.stack}|${l.batch}|${l.by}`;
 
-/** Demo identities for each role. */
-export const PEOPLE: Record<Role, string> = {
-  "Operations Admin": "Peter M.",
-  "Warehouse Manager": "Joseph O.",
-  Trading: "Mary W.",
-  Finance: "Carol M.",
-  "IT Admin": "Michael A.",
-};
-/** Who prepared the reconciliation pack. Separation of duties: they can't approve it. */
-export const PREPARER = "Dennis I.";
+/**
+ * The "Viewing as" demo people: the signers on Finance's signature block, each with the app role
+ * that sets what they can change and the sign-off gate that is theirs. Margaret Mburu also runs
+ * the count (approves count sheets). With real users the person comes from the sign-in.
+ */
+export interface Person {
+  name: string;
+  role: Role;
+  gate?: Gate;
+}
+export const PEOPLE: Person[] = [
+  { name: "Margaret Mburu", role: "Operations Admin", gate: "Operations Lead" },
+  { name: "Caroline Ngwambu", role: "Finance", gate: "Senior Accountant" },
+  { name: "Lucy Maundu", role: "Finance", gate: "Chief Accountant" },
+  { name: "Caroline Njambi", role: "Trading", gate: "Trading Admin Manager" },
+  { name: "Luis Brian", role: "Warehouse Manager", gate: "Warehouse Manager" },
+  { name: "Carol Muthama", role: "Finance", gate: "Country Finance Manager" },
+  { name: "Andrew Tanui", role: "IT Admin" },
+];
+/** The first person with this role (e.g. the owner of exceptions raised by hand: Operations). */
+export const personFor = (r: Role) => PEOPLE.find((p) => p.role === r)!;
 
 export type { Signature };
 
@@ -55,7 +72,8 @@ function stamp() {
 }
 
 function useStoreState(source: DataSource, data: MgmtData, reload: () => void = () => {}) {
-  const [role, setRoleState] = useState<Role>("Operations Admin");
+  const [person, setPersonState] = useState<Person>(PEOPLE[0]);
+  const role = person.role;
   const [toast, setToast] = useState<string | null>(null);
   const [stockTakes, setStockTakes] = useState<StockTake[]>(data.stockTakes);
   const [sheets, setSheets] = useState(data.sheets);
@@ -71,6 +89,10 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
   // Count lines and stacks are read-only here; they change in the counter app.
   const counts = data.counts ?? [];
   const [comtras, setComtras] = useState<ComtrasPosition | undefined>(data.reference.comtras);
+  const [contractJournal, setContractJournal] = useState<ContractJournal | undefined>(data.contractJournal);
+  const [shipments, setShipments] = useState<ShipmentTracker | undefined>(data.shipments);
+  const [xbsStuffing, setXbsStuffing] = useState<XbsStuffingSet | undefined>(data.xbsStuffing);
+  const [directLots, setDirectLots] = useState<DirectLots | undefined>(data.directLots);
   const [reconItems, setReconItems] = useState<ReconItem[]>(data.reconItems ?? []);
   const [allocation, setAllocation] = useState<AllocationData>(
     data.allocation ?? { profiles: [], runs: [], lastAreas: {}, rules: { homeArea: true, rotation: true, thirdPartyClearance: true }, people: [] },
@@ -80,9 +102,28 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
   /** R-### → who was picked to do it (this session). */
   const [recountTo, setRecountTo] = useState<Record<string, string>>({});
   const stacks = data.stacks ?? [];
-  const [signatures, setSignatures] = useState<Partial<Record<Role, Signature>>>(data.signatures ?? {});
+  const [signatures, setSignatures] = useState<Partial<Record<Gate, Signature>>>(data.signatures ?? {});
+  /** Who signs each gate: the setting SignOffSigners, else the name on Finance's signature block. */
+  const signerOf = (g: Gate): Signer => data.signers?.[g] ?? { name: GATES.find((x) => x.gate === g)!.person };
 
-  const me = PEOPLE[role];
+  /* governance KPIs (kpi.ts): worked out from what is loaded; saved on load, frozen when Finance signs */
+  const [governance, setGovernance] = useState<GovernanceData | undefined>(data.governance);
+  const activeStockTake = (stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0])?.id ?? "";
+  /** The sign-off gates of the active stock take's type. */
+  const chain = chainFor((stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0])?.type);
+  const kpis = useMemo(
+    () => (governance ? governanceKpis({ input: { counts, stacks, baskets }, reconItems, variances, exceptions, stockTake: activeStockTake, gov: governance }) : undefined),
+    [governance, counts, stacks, baskets, reconItems, variances, exceptions, activeStockTake],
+  );
+  const kpisFrozen = !!governance?.history.some((h) => h.stockTake === activeStockTake && h.frozenOn);
+  const kpisSaved = useRef(false);
+  useEffect(() => {
+    if (kpisSaved.current || !kpis || kpisFrozen || !source.saveKpis) return;
+    kpisSaved.current = true;
+    source.saveKpis(kpis, false).catch((e: unknown) => console.warn("Governance KPIs not saved:", e));
+  }, [kpis, kpisFrozen, source]);
+
+  const me = person.name;
 
   /**
    * A different counter for a blind recount: present on the published allocation
@@ -134,6 +175,8 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
   return {
     role,
     me,
+    /** The sign-off gate of the person viewing, if they sign one. */
+    myGate: person.gate,
     toast,
     stockTakes,
     sheets,
@@ -146,9 +189,59 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
     audit,
     issues,
     signatures,
+    signerOf,
+    chain,
     counts,
     allocation,
     stacks,
+    /** The Stock Assistant (Copilot Studio) is reachable from this Hub: Dataverse, and setting AssistantEnabled = true. */
+    assistantReady: !!source.askAssistant && !!data.assistant,
+    /** Asks the Stock Assistant; pass the last answer's conversation to keep the context. */
+    askAssistant(question: string, conversation?: string) {
+      if (!source.askAssistant) return Promise.reject(new Error("The Stock Assistant is only available in the published Hub."));
+      return source.askAssistant(question, conversation);
+    },
+    /** The Comtras 537 contract invoicing journal loaded for the active stock take. */
+    contractJournal,
+    /** The shipment tracker (Trade / Logistics) loaded for the active stock take. */
+    shipments,
+    /** XBS stuffing dates (shipped reports) loaded for the active stock take; they correct the tracker's. */
+    xbsStuffing,
+    /** Day limits of the afloat ageing buckets (setting AfloatAgeingDays), if set. */
+    afloatAgeingDays: data.afloatAgeingDays,
+    /** Trading's direct purchase lots loaded for the active stock take. */
+    directLots,
+    /** Whether counting is finished; Level 1 closes on its own (close-count.ts). */
+    countClose: data.countClose,
+    /** Who runs Level 1 (Hub or the server engine) and the engine's last finished run. */
+    level1: data.level1,
+    /** Governance KPIs of the active stock take, saved history for the trend, and whether they are final. */
+    kpis,
+    kpiHistory: governance?.history ?? [],
+    kpisFrozen,
+    kpiCountDate: governance?.countDate,
+    activeStockTake,
+    /** Downloads the Level 1 summary PDF of the active stock take. */
+    async downloadL1Pdf() {
+      const st = stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0];
+      const pdf = st && (await source.getL1Pdf?.(st.id).catch(() => undefined));
+      if (!pdf) {
+        flash("The Level 1 PDF isn't available yet. It is made when counting closes.");
+        return;
+      }
+      const bin = atob(pdf.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = pdf.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      flash(`${pdf.name} downloaded.`);
+    },
     directPurchases,
     people: data.reference.people,
     source: source.kind,
@@ -158,9 +251,10 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
     /** A counter's photo (Dataverse Note), loaded when someone opens it. */
     photo: (id: string) => source.photo(id),
 
-    setRole(r: Role) {
-      setRoleState(r);
-      flash(`Viewing as ${PEOPLE[r]}, ${r}.`);
+    setPerson(name: string) {
+      const p = PEOPLE.find((x) => x.name === name) ?? PEOPLE[0];
+      setPersonState(p);
+      flash(`Viewing as ${p.name}, ${p.gate ?? p.role}.`);
     },
 
     createStockTake(st: StockTake) {
@@ -284,7 +378,7 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
             kind: causes[id] ?? v.cause,
             ref: id,
             dept: "Operations",
-            owner: PEOPLE["Operations Admin"],
+            owner: personFor("Operations Admin").name,
             raised: "Today",
             dueDays: 5,
             ageDays: 0,
@@ -386,6 +480,89 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
       if (gone) log("Reconciliation", gone.label, "Removed from the bridge");
     },
     /** Loads the Comtras P526 position for the active stock take; resolves true once it's saved. */
+    importContracts(upload: ContractUpload, onProgress?: (done: number, total: number) => void) {
+      if (!source.importContracts) {
+        flash("The 537 journal is loaded into Dataverse; this preview has nowhere to keep it.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importContracts(upload, onProgress)
+        .then(() => {
+          setContractJournal({ file: upload.file, at: stamp(), by: me, lines: upload.lines });
+          log("Comtras", upload.file, `Loaded ${upload.lines.length} lines of the 537 contract journal`);
+          flash(`Contract journal loaded: ${upload.lines.length} lines.`);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the contract journal. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /** Loads Trading's direct purchase lots for the active stock take; resolves true once they're saved. */
+    importDirectLots(upload: DirectUpload, onProgress?: (done: number, total: number) => void) {
+      if (!source.importDirectLots) {
+        flash("Direct purchase lots are loaded into Dataverse; this preview has nowhere to keep them.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importDirectLots(upload, onProgress)
+        .then(() => {
+          setDirectLots({ file: upload.file, at: stamp(), by: me, lots: upload.lots });
+          log("Direct purchases", upload.file, `Loaded ${upload.lots.length} direct purchase lots`);
+          flash(`Direct purchase lots loaded: ${upload.lots.length} lots.`);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the direct purchase lots. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /** Loads the shipment tracker for the active stock take; resolves true once it's saved. */
+    importShipments(upload: ShipmentUpload, onProgress?: (done: number, total: number) => void) {
+      if (!source.importShipments) {
+        flash("The shipment tracker is loaded into Dataverse; this preview has nowhere to keep it.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importShipments(upload, onProgress)
+        .then(() => {
+          setShipments({ file: upload.file, at: stamp(), by: me, lines: upload.lines });
+          log("Shipments", upload.file, `Loaded ${upload.lines.length} shipments from the tracker`);
+          flash(`Shipment tracker loaded: ${upload.lines.length} shipments.`);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the shipment tracker. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /** Adds an XBS shipped report's stuffing dates to the active stock take; resolves true once saved. */
+    importXbsStuffing(upload: XbsStuffingUpload, onProgress?: (done: number, total: number) => void) {
+      if (!source.importXbsStuffing) {
+        flash("XBS stuffing dates are loaded into Dataverse; this preview has nowhere to keep them.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importXbsStuffing(upload, onProgress)
+        .then(() => {
+          setXbsStuffing((had) => {
+            const key = (x: { salesContract: string; si: string; stuffedOn: string }) => `${x.salesContract}|${x.si}|${x.stuffedOn}`;
+            const have = new Set((had?.rows ?? []).map(key));
+            return { files: [...new Set([...(had?.files ?? []), upload.file])], rows: [...(had?.rows ?? []), ...upload.rows.filter((x) => !have.has(key(x)))] };
+          });
+          log("Shipments", upload.file, `Loaded ${upload.rows.length} XBS stuffing dates`);
+          flash(`XBS stuffing dates loaded: ${upload.rows.length} shipments.`);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the XBS stuffing dates. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
     importComtras(upload: ComtrasUpload, onProgress?: (done: number, total: number) => void) {
       return source
         .importComtras(upload, onProgress)
@@ -430,26 +607,54 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
         });
     },
 
-    sign(r: Role, comment: string) {
-      setSignatures((s) => ({ ...s, [r]: { by: PEOPLE[r], at: stamp(), comment: comment || undefined } }));
-      persist(source.addSignoff(r, "signed", comment), "your signature", () =>
-        setSignatures((s) => {
-          const next = { ...s };
-          delete next[r];
-          return next;
+    sign(g: Gate, comment: string) {
+      const last = chain.at(-1)?.gate === g;
+      setSignatures((s) => ({ ...s, [g]: { by: signerOf(g).name, at: stamp(), comment: comment || undefined } }));
+      persist(
+        source.addSignoff(g, "signed", comment).then(async (byId) => {
+          if (byId) setSignatures((s) => (s[g] ? { ...s, [g]: { ...s[g]!, byId } } : s));
+          // The chain's last signature makes the governance KPIs final: saved as at now and never recalculated.
+          if (!last || !governance || kpisFrozen || !source.saveKpis) return;
+          const final = { ...governance, financeSignedOn: new Date().toISOString() };
+          const k = governanceKpis({ input: { counts, stacks, baskets }, reconItems, variances, exceptions, stockTake: activeStockTake, gov: final });
+          if (!k) return;
+          // The signature is saved by now; a failed freeze must not undo it on screen.
+          const saved = await source.saveKpis(k, true).then(() => true, (e: unknown) => (console.warn("Governance KPIs not frozen:", e), false));
+          if (!saved) return;
+          const now = final.financeSignedOn;
+          setGovernance({
+            ...final,
+            history: [
+              ...k.map((x) => ({ stockTake: activeStockTake, countDate: final.countDate ?? "", code: x.code, name: x.name, value: x.value, display: x.display, target: x.target, status: x.status, frozenOn: now })),
+              ...final.history.filter((h) => h.stockTake !== activeStockTake),
+            ],
+          });
         }),
+        "your signature",
+        () =>
+          setSignatures((s) => {
+            const next = { ...s };
+            delete next[g];
+            return next;
+          }),
       );
-      const i = CHAIN.findIndex((c) => c.role === r);
-      const next = CHAIN[i + 1];
-      log("Sign-off", "ST-2026-03", `${CHAIN[i].title} signed`);
-      flash(next ? `Signed. ${next.title} has been notified in Teams.` : "Signed. The stock position is certified and the pack has been sent.");
+      const next = openGates(chain, { ...signatures, [g]: true });
+      log("Sign-off", activeStockTake, `${g} signed`);
+      flash(
+        last
+          ? "Signed. The stock position is certified and the pack has been sent."
+          : next.length && !next.some((x) => x.gate === g)
+            ? `Signed. ${next.map((x) => signerOf(x.gate).name).join(" and ")} ${next.length > 1 ? "have" : "has"} been notified in Teams.`
+            : "Signed.",
+      );
     },
-    sendBack(r: Role, comment: string) {
+    /** Back to the first gate: every signature so far is cleared. */
+    sendBack(g: Gate, comment: string) {
       const before = signatures;
       setSignatures({});
-      persist(source.addSignoff(r, "sent back", comment), "the send-back", () => setSignatures(before));
-      log("Sign-off", "ST-2026-03", `Sent back by ${CHAIN.find((c) => c.role === r)?.title}: ${comment}`);
-      flash("Sent back to Operations. Earlier signatures are cleared.");
+      persist(source.addSignoff(g, "sent back", comment).then(() => undefined), "the send-back", () => setSignatures(before));
+      log("Sign-off", activeStockTake, `Sent back by the ${g}: ${comment}`);
+      flash(`Sent back to ${signerOf(chain[0].gate).name} (${chain[0].gate}). Earlier signatures are cleared.`);
     },
   };
 }

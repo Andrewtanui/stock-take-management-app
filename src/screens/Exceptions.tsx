@@ -2,11 +2,16 @@ import { useState } from "react";
 import { BellRing } from "lucide-react";
 import { ESCALATION, SLA_DAYS } from "../data/repository";
 import { useStore } from "../data/store";
-import type { Exception } from "../data/types";
+import type { Exception, Priority } from "../data/types";
+import { priorityFor } from "../data/auto-decide";
 import { Chip, PageHead, Tabs, n, type Tone } from "../ui/kit";
 
 type F = "open" | "overdue" | "escalated" | "closed" | "all";
 const STATUS_TONE: Record<Exception["status"], Tone> = { Open: "warn", "In progress": "info", Escalated: "crit", Closed: "ok" };
+const PRIORITY_TONE: Record<Priority, Tone> = { High: "crit", Medium: "warn", Low: "info" };
+const PRIORITIES: Priority[] = ["High", "Medium", "Low"];
+/** Priority as stored; older exceptions get theirs from their size. */
+const prio = (e: Exception): Priority => e.priority ?? (e.source === "Import" ? "Medium" : priorityFor(e.bags));
 
 function due(e: Exception) {
   if (e.status === "Closed") return <span className="muted">Closed</span>;
@@ -24,7 +29,12 @@ export default function Exceptions() {
     (f === "overdue" && e.status !== "Closed" && e.dueDays < 0) ||
     (f === "escalated" && e.status === "Escalated") ||
     (f === "closed" && e.status === "Closed");
-  const rows = store.exceptions.filter(match);
+  const [pf, setPf] = useState<"all" | Priority>("all");
+  const inTab = store.exceptions.filter(match);
+  // High first; within a priority, the most overdue first.
+  const rows = inTab
+    .filter((e) => pf === "all" || prio(e) === pf)
+    .sort((a, b) => PRIORITIES.indexOf(prio(a)) - PRIORITIES.indexOf(prio(b)) || a.dueDays - b.dueDays);
   const [sel, setSel] = useState<string | undefined>(rows[0]?.id);
   const ex = store.exceptions.find((e) => e.id === sel);
   const [resolution, setResolution] = useState("");
@@ -38,7 +48,7 @@ export default function Exceptions() {
     <div className="page">
       <PageHead
         title="Exceptions"
-        sub={`Every issue that needs fixing at source, with an owner and a ${SLA_DAYS}-working-day deadline. Overdue items alert the owner in Teams, then escalate to their head of department, then to the Country Finance Manager.`}
+        sub={`Every issue that needs fixing at source, with an owner and a deadline: High priority (10 bags or more) sooner, Medium within ${SLA_DAYS} working days, and small differences (2 bags or less) on one low-priority list per warehouse. Overdue items alert the owner in Teams, then escalate to their head of department, then to the Country Finance Manager.`}
       />
 
       <Tabs
@@ -56,12 +66,35 @@ export default function Exceptions() {
         ]}
       />
 
+      <fieldset className="causes cause-filter">
+        <legend className="field-label">Priority</legend>
+        <div className="cause-chips">
+          {([["all", "All priorities", inTab.length], ...PRIORITIES.map((p) => [p, p, inTab.filter((e) => prio(e) === p).length])] as [("all" | Priority), string, number][]).map(([value, text, k]) => (
+            <label key={value} className="cause">
+              <input
+                type="radio"
+                name="priority-filter"
+                checked={pf === value}
+                onChange={() => {
+                  setPf(value);
+                  setSel(inTab.find((e) => value === "all" || prio(e) === value)?.id);
+                }}
+              />
+              <span>
+                {text} <em className="cause-n">{k}</em>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <div className="split split-wide">
         <div className="table-wrap">
           <table className="table table-select">
             <thead>
               <tr>
                 <th>Exception</th>
+                <th>Priority</th>
                 <th>Cause</th>
                 <th>Owner</th>
                 <th>Due</th>
@@ -75,6 +108,9 @@ export default function Exceptions() {
                   <td>
                     <div className="code small">{e.id}</div>
                     {e.title}
+                  </td>
+                  <td>
+                    <Chip tone={PRIORITY_TONE[prio(e)]}>{prio(e)}</Chip>
                   </td>
                   <td className="muted">{e.kind}</td>
                   <td>
@@ -90,7 +126,7 @@ export default function Exceptions() {
               ))}
               {!rows.length && (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={7} className="muted">
                     Nothing here.
                   </td>
                 </tr>
@@ -107,6 +143,10 @@ export default function Exceptions() {
             </div>
             <h2 className="h3">{ex.title}</h2>
             <dl className="kv">
+              <dt>Priority</dt>
+              <dd>
+                <Chip tone={PRIORITY_TONE[prio(ex)]}>{prio(ex)}</Chip>
+              </dd>
               <dt>Cause</dt>
               <dd>{ex.kind}</dd>
               <dt>From</dt>

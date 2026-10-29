@@ -1,6 +1,6 @@
 // Creates (or updates) the Stage 4 flows and their connection references in IBKYStockTake,
 // then turns the flows on.
-//   npm run dv:flows -- --team <teamId> --channel <channelId> [--dataverse <connId>] [--teams <connId>] [--approvals <connId>] [--outlook <connId>] [--only "IBKY F9"] [--dry-run]
+//   npm run dv:flows -- --team <teamId> --channel <channelId> [--dataverse <connId>] [--teams <connId>] [--approvals <connId>] [--outlook <connId>] [--copilotstudio <connId>] [--only "IBKY F9"] [--dry-run]
 // --only: create/update just the flows whose name starts with this text (the others are left as they are).
 // Connection ids: `npx pa connection list`. Team/channel: from a Teams "Get link to channel" URL.
 import { dv } from "./api.mjs";
@@ -13,7 +13,7 @@ const arg = (k) => {
 };
 const dry = process.argv.includes("--dry-run");
 const cfg = { teamId: arg("team"), channelId: arg("channel") };
-const conn = { dataverse: arg("dataverse"), teams: arg("teams"), approvals: arg("approvals"), outlook: arg("outlook") };
+const conn = { dataverse: arg("dataverse"), teams: arg("teams"), approvals: arg("approvals"), outlook: arg("outlook"), copilotstudio: arg("copilotstudio") };
 if (!cfg.teamId || !cfg.channelId) throw new Error("--team and --channel are required (from the Teams channel link)");
 
 // OData quote-escape, then URL-encode: a raw "+" in a query string reads as a space,

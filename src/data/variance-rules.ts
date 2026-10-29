@@ -54,6 +54,18 @@ const n = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 })
 const RECENT_DAYS = 14;
 const plural = (x: number, w: string) => `${n(Math.abs(x))} ${w}${Math.abs(x) === 1 ? "" : "s"}`;
 
+/** Edits (insert, delete, change one character) between two outturns: "KC8181" -> "KCS8181" is 1. */
+export function typos(a: string, b: string) {
+  const x = a.toUpperCase(), y = b.toUpperCase();
+  let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= y.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[y.length];
+}
+
 /**
  * A third-party site the counter closed: reported empty, or finished (every stack counted).
  * Either way, every lot XBS has there that wasn't counted counts as 0.
@@ -105,6 +117,21 @@ export function draftVariances(
   const emptyAt = new Map(emptySites.filter((e) => thirdParty.has(e.site)).map((e) => [e.site, e]));
   for (const l of xbs) if (emptyAt.has(l.wh)) judge.add(lotKey(l.wh, "", l.b));
 
+  // A counted lot XBS has, at the same place, with the same units and weight and an outturn at most
+  // two characters away: the twin of a lot XBS doesn't have.
+  const xbsBatches = new Set(xbs.map((l) => `${l.wh}|${l.b}`));
+  const typedTwin = (site: SiteCode, stack: string, batch: string, outturn: string, units: number, kg: number) => {
+    for (const [k, cs] of counted) {
+      const [s2, st2, b2] = k.split("|");
+      if (s2 !== site || st2 !== stack || b2 === batch || !xbsBatches.has(`${site}|${b2}`)) continue;
+      const u = cs.reduce((a, c) => a + c.units, 0);
+      const w = cs.reduce((a, c) => a + c.kg, 0);
+      if (u === units && Math.abs(w - kg) < MATCH_TOLERANCE_KG && typos(cs[0].outturn, outturn) <= 2) return cs[0];
+    }
+    return undefined;
+  };
+  let twin: CountFact | undefined;
+
   const drafts: VarianceDraft[] = [];
   for (const k of judge) {
     const [site, stackOrEmpty, batch] = k.split("|") as [SiteCode, string, string];
@@ -143,6 +170,11 @@ export function draftVariances(
     } else if (!expected.length && elsewhere.length) {
       cause = "Unposted receipt";
       why = `Counted ${countedUnits} units here, but XBS still has ${plural(elsewhereUnits, "unit")} of ${outturn} at ${elsewhereWhere}. It looks like the bags moved without the transfer being received in XBS.`;
+    } else if (!expected.length && (twin = typedTwin(site, stackOrEmpty, batch, outturn, countedUnits, countedKg))) {
+      // The same bags at the same place under an outturn one or two characters off, which XBS has:
+      // the lot typed twice (Aug 2026: KC8181 typed for KCS8181, 50 bags counted twice).
+      cause = "Duplicate entry";
+      why = `${outturn} isn't in XBS, but ${twin.outturn} was counted at the same place with the same ${plural(countedUnits, "unit")} (${twin.by} at ${twin.at}). It looks like the same lot typed twice: remove one of the two lines.`;
     } else if (!expected.length) {
       cause = "Mapping error";
       why = `${outturn} isn't in XBS anywhere. Check the tag against the lots expected on this stack — it may be misread, or missing from XBS.`;

@@ -270,6 +270,13 @@
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "stk_closedon"
         },
+        "stk_countclosedon": {
+          "type": "string",
+          "title": "Count closed on",
+          "x-ms-dataverse-attribute": "stk_countclosedon",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "stk_countclosedon"
+        },
         "stk_countdate": {
           "type": "string",
           "title": "Count date",
@@ -297,6 +304,14 @@
           "x-ms-dataverse-attribute-of": "stk_import",
           "x-ms-read-only": true,
           "maxLength": 30
+        },
+        "stk_l1summary": {
+          "type": "string",
+          "title": "Level 1 summary",
+          "x-ms-dataverse-attribute": "stk_l1summary",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "stk_l1summary",
+          "maxLength": 20000
         },
         "stk_name": {
           "type": "string",
@@ -337,6 +352,14 @@
           "x-ms-dataverse-attribute-of": "stk_preparedby",
           "x-ms-read-only": true,
           "maxLength": 200
+        },
+        "stk_scope": {
+          "type": "string",
+          "title": "Scope",
+          "x-ms-dataverse-attribute": "stk_scope",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "stk_scope",
+          "maxLength": 4000
         },
         "stk_status": {
           "type": "string",
@@ -394,13 +417,16 @@
           "x-ms-schema-name": "stk_type",
           "enum": [
             "Monthly",
-            "100% (zero-out)"
+            "100% (zero-out)",
+            "Ad hoc"
           ],
           "x-ms-enum-values": [
             614500000,
-            614500001
+            614500001,
+            614500002
           ],
           "Color": [
+            null,
             null,
             null
           ],

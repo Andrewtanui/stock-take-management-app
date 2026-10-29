@@ -7,9 +7,10 @@
 // Ibero's system stock is XBS Warehouse + Blocked for Processing, as on the
 // September month-end workbook.
 
-import { CHAIN, IMPORTS, SITES, allLines, basketMap, site } from "./repository";
+import { IMPORTS, SITES, allLines, basketMap, site } from "./repository";
+import type { Gate } from "./repository";
 import type { Signature } from "./source";
-import type { CountRow, Exception, Issue, Role, SiteCode, StackInfo, Variance, XbsLine } from "./types";
+import type { CountRow, Exception, Issue, SiteCode, StackInfo, Variance, XbsLine } from "./types";
 
 export type ColKind = "text" | "int" | "num1" | "pct";
 export interface Col {
@@ -35,7 +36,9 @@ export interface ReportInput {
   exceptions: Exception[];
   issues: Issue[];
   variances: Variance[];
-  signatures: Partial<Record<Role, Signature>>;
+  signatures: Partial<Record<Gate, Signature>>;
+  /** The active stock take's gates, in signing order, with who signs each. */
+  chain: { gate: Gate; tier: string; signs: string; signer: string }[];
   stockTake: string;
 }
 
@@ -49,13 +52,16 @@ const totalOf = (rows: Row[], label: string, keys: string[]): Row => {
 };
 // A lot is one batch on one Ibero stack, but the whole site at a third party (no stack locations in XBS),
 // as in variance-rules.ts - so a recount there replaces the lot's lines on every stack at the site.
-const lotKey = (c: { site: string; stack: string; batch: string }) =>
-  `${c.site}|${SITES.find((s) => s.code === c.site)?.thirdParty ? "" : c.stack}|${c.batch}`;
+const lotKey = (c: { site: string; stack: string; batch: string }, thirdParty?: Set<string>) =>
+  `${c.site}|${(thirdParty ? thirdParty.has(c.site) : SITES.find((s) => s.code === c.site)?.thirdParty) ? "" : c.stack}|${c.batch}`;
 
-/** Counts as they stand: a recount replaces earlier lines of the same lot. */
-export function currentCounts(counts: CountRow[]): CountRow[] {
+/**
+ * Counts as they stand: a recount replaces earlier lines of the same lot. `thirdParty` says which
+ * sites are third parties when the caller has them (during a Hub load the site list isn't set yet).
+ */
+export function currentCounts(counts: CountRow[], thirdParty?: Set<string>): CountRow[] {
   const byLot = new Map<string, CountRow[]>();
-  for (const c of counts) byLot.set(lotKey(c), [...(byLot.get(lotKey(c)) ?? []), c]);
+  for (const c of counts) byLot.set(lotKey(c, thirdParty), [...(byLot.get(lotKey(c, thirdParty)) ?? []), c]);
   const out: CountRow[] = [];
   for (const rows of byLot.values()) {
     const recounts = rows.filter((r) => r.recount).sort((a, b) => (b.countedOn ?? "").localeCompare(a.countedOn ?? ""));
@@ -432,9 +438,10 @@ function complaintsLog(input: ReportInput): ReportOut {
 }
 
 function signOffPack(input: ReportInput): ReportOut {
-  const gates: Row[] = CHAIN.map((c) => {
-    const s = input.signatures[c.role];
-    return { gate: c.title, signs: c.signs, by: s?.by ?? "Not signed", at: s?.at ?? "", comment: s?.comment ?? "" };
+  // Laid out like Finance's signature block: tier, name, job title, date signed.
+  const gates: Row[] = input.chain.map((c) => {
+    const s = input.signatures[c.gate];
+    return { tier: `${c.tier} by`, by: s?.by ?? c.signer, gate: c.gate, signs: c.signs, at: s?.at ?? "Not signed", comment: s?.comment ?? "" };
   });
   // Reconciliation by primary basket, physical vs XBS at counted warehouses.
   const counts = currentCounts(input.counts).filter((c) => !c.other);
@@ -463,7 +470,7 @@ function signOffPack(input: ReportInput): ReportOut {
   return {
     note: `${input.stockTake}: sign-off gates, reconciliation by primary basket for the stock counted so far, and every variance.`,
     tables: [
-      { title: "Sign-off", columns: [{ key: "gate", label: "Gate" }, { key: "signs", label: "Certifies" }, { key: "by", label: "Signed by" }, { key: "at", label: "When" }, { key: "comment", label: "Comment" }], rows: gates },
+      { title: "Sign-off", columns: [{ key: "tier", label: "" }, { key: "by", label: "Name" }, { key: "gate", label: "Job title" }, { key: "signs", label: "Certifies" }, { key: "at", label: "Signed" }, { key: "comment", label: "Comment" }], rows: gates },
       {
         title: "Reconciliation by primary basket (eq60, counted stock)",
         columns: [{ key: "basket", label: "Primary basket" }, { key: "xbs", label: "XBS eq60", kind: "num1" }, { key: "phys", label: "Physical eq60", kind: "num1" }, { key: "diff", label: "Difference eq60", kind: "num1" }],

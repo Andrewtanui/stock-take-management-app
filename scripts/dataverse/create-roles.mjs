@@ -96,6 +96,30 @@ const idFor = (table, privilege) => {
   return id;
 };
 
+/**
+ * prefixTables: tables of another solution (e.g. ibky_), org-wide, only where they exist here.
+ * Their privileges are found by name ("prvReadibky_variance_snapshot" etc.).
+ */
+async function prefixPrivileges(r) {
+  const out = [];
+  for (const [prefix, letters] of Object.entries(r.prefixTables ?? {})) {
+    const all = [];
+    let url = `privileges?$select=privilegeid,name&$filter=contains(name,'${prefix}')`;
+    while (url) {
+      const page = await dv("GET", url);
+      all.push(...page.value);
+      url = page["@odata.nextLink"]?.split("/api/data/v9.2/")[1];
+    }
+    const wanted = new Set([...letters].map((l) => LETTER[l]).concat(/[CW]/.test(letters) ? ["Append"] : [], letters.includes("R") ? ["AppendTo"] : []));
+    for (const p of all) {
+      const m = /^prv(Create|Read|Write|Delete|Assign|Share|AppendTo|Append)(.+)$/i.exec(p.name);
+      if (!m || !m[2].toLowerCase().startsWith(prefix) || !wanted.has(m[1].replace(/^appendto$/i, "AppendTo").replace(/^append$/i, "Append"))) continue;
+      out.push({ "@odata.type": "Microsoft.Dynamics.CRM.RolePrivilege", PrivilegeId: p.privilegeid, BusinessUnitId: bu.businessunitid, Depth: "Global" });
+    }
+  }
+  return out;
+}
+
 for (const r of ROLES) {
   process.stdout.write(`\n${r.name} … `);
   let role = (await dv("GET", `roles?$select=roleid&$filter=name eq '${r.name}' and _businessunitid_value eq ${bu.businessunitid}`)).value[0];
@@ -110,6 +134,7 @@ for (const r of ROLES) {
     BusinessUnitId: bu.businessunitid,
     Depth: DEPTH[p.depth],
   }));
+  Privileges.push(...(await prefixPrivileges(r)));
   // Platform privileges (e.g. View Audit History), organisation-wide.
   for (const m of r.misc ?? []) {
     const found = (await dv("GET", `privileges?$select=privilegeid&$filter=name eq 'prv${m}'`)).value[0];

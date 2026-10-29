@@ -138,11 +138,46 @@ for (const [name, [display, values]] of Object.entries(CHOICES)) {
   );
 }
 
+// Values added to a choice after it was created (e.g. "Ad hoc" on stk_stocktaketype): appended in order.
+// A value renamed in schema.mjs keeps its number and gets the new label (e.g. the sign-off gates, 28 Oct 2026).
+if (!DRY)
+  for (const [name, [, values]] of Object.entries(CHOICES)) {
+    const set = await dv("GET", `GlobalOptionSetDefinitions(Name='${name}')`);
+    const have = new Map((set.Options ?? []).map((o) => [o.Value, o.Label?.UserLocalizedLabel?.Label]));
+    for (const [i, value] of values.entries()) {
+      if (have.has(BASE_VALUE + i)) {
+        if (have.get(BASE_VALUE + i) === value) continue;
+        process.stdout.write(`  ~ choice ${name}: "${have.get(BASE_VALUE + i)}" -> "${value}" … `);
+        await dv("POST", "UpdateOptionValue", { OptionSetName: name, Value: BASE_VALUE + i, Label: label(value), MergeLabels: false, SolutionUniqueName: SOL });
+        created++;
+        console.log("ok");
+        continue;
+      }
+      process.stdout.write(`  + choice ${name}: ${value} … `);
+      await dv("POST", "InsertOptionValue", { OptionSetName: name, Value: BASE_VALUE + i, Label: label(value), SolutionUniqueName: SOL });
+      created++;
+      console.log("ok");
+    }
+  }
+
 // MetadataIds of the global choices, for binding choice columns.
 const choiceIds = {};
 if (!DRY)
   for (const name of Object.keys(CHOICES))
     choiceIds[name] = (await dv("GET", `GlobalOptionSetDefinitions(Name='${name}')?$select=MetadataId`)).MetadataId;
+
+/* 2b. options added later to an existing global choice (appended, so existing values never move) */
+for (const [name, [, values]] of Object.entries(CHOICES)) {
+  const have = DRY ? new Set() : new Set(((await dv("GET", `GlobalOptionSetDefinitions(Name='${name}')`)).Options ?? []).map((o) => o.Value));
+  for (const [i, value] of values.entries()) {
+    if (DRY && i < values.length) continue; // a dry run can't tell what exists
+    await step(
+      `${name} option "${value}"`,
+      async () => have.has(BASE_VALUE + i),
+      () => dv("POST", "InsertOptionValue", { OptionSetName: name, Value: BASE_VALUE + i, Label: label(value), SolutionUniqueName: SOL }),
+    );
+  }
+}
 
 /* 3. tables */
 console.log("\nTables");

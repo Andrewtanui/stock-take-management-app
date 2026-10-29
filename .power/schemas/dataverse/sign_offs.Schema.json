@@ -302,18 +302,24 @@
           "x-ms-dataverse-type": "PicklistType",
           "x-ms-schema-name": "stk_gate",
           "enum": [
-            "Operations",
-            "Warehouse",
-            "Trading",
-            "Finance"
+            "Operations Lead",
+            "Warehouse Manager",
+            "Trading Admin Manager",
+            "Country Finance Manager",
+            "Senior Accountant",
+            "Chief Accountant"
           ],
           "x-ms-enum-values": [
             614500000,
             614500001,
             614500002,
-            614500003
+            614500003,
+            614500004,
+            614500005
           ],
           "Color": [
+            null,
+            null,
             null,
             null,
             null,

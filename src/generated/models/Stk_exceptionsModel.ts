@@ -47,11 +47,18 @@ export const Stk_exceptionsstk_kind = {
   614500015: 'Posting timing / late posting'
 } as const;
 export type Stk_exceptionsstk_kind = keyof typeof Stk_exceptionsstk_kind;
+export const Stk_exceptionsstk_priority = {
+  614500000: 'High',
+  614500001: 'Medium',
+  614500002: 'Low'
+} as const;
+export type Stk_exceptionsstk_priority = keyof typeof Stk_exceptionsstk_priority;
 export const Stk_exceptionsstk_source = {
   614500000: 'Count',
   614500001: 'Import',
   614500002: 'Pre-count check',
-  614500003: 'Reconciliation'
+  614500003: 'Reconciliation',
+  614500004: 'IBKY engine'
 } as const;
 export type Stk_exceptionsstk_source = keyof typeof Stk_exceptionsstk_source;
 export const Stk_exceptionsstk_status = {
@@ -76,8 +83,11 @@ export interface Stk_exceptionsBase {
   "stk_import@odata.bind"?: string;
   stk_kind?: Stk_exceptionsstk_kind;
   stk_name: string;
+  stk_priority?: Stk_exceptionsstk_priority;
   stk_reference?: string;
   stk_resolution?: string;
+  stk_rule?: string;
+  stk_rulekey?: string;
   stk_source?: Stk_exceptionsstk_source;
   stk_status?: Stk_exceptionsstk_status;
   "stk_stocktake@odata.bind"?: string;
@@ -95,6 +105,7 @@ export interface Stk_exceptions extends Stk_exceptionsBase {
   stk_departmentname?: string;
   stk_escalationlevelname?: string;
   stk_kindname?: string;
+  stk_priorityname?: string;
   stk_sourcename?: string;
   stk_statusname?: string;
   versionnumber?: number;
