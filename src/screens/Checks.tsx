@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { ChevronDown, UserRound } from "lucide-react";
-import { IMPORTS, checks } from "../data/repository";
+import { IMPORTS, SITES, allLines, checks } from "../data/repository";
+import { contractStates, partLotChecks } from "../data/part-lots";
+import { CALL_OFF_DEFAULT, TP_AGEING_DEFAULT, thirdPartyAgeing } from "../data/third-party-ageing";
+import { SUBPRODUCT_AGE_DEFAULT, subProductChecks } from "../data/subproducts";
 import { useStore } from "../data/store";
 import type { Dept } from "../data/types";
 import { Chip, Code, PageHead, n } from "../ui/kit";
@@ -13,6 +16,13 @@ const CHECK_KIND: Record<string, string> = {
   ceiling: "Third party",
   aged: "Third party",
   split: "Split lot",
+  "latest-sale": "Partial delivery: rest still at third party",
+  "ds-arriving": "Posting timing / late posting",
+  "being-stuffed": "Unposted gate-out",
+  nearing: "Third party",
+  "franchise-gains": "Sub-products",
+  "franchise-bulked": "Sub-products",
+  "ex-office": "Sub-products",
 };
 const DEPTS: Dept[] = ["Operations", "Warehouse", "Trading", "Finance", "Logistics", "Quality"];
 
@@ -24,9 +34,17 @@ const SEV = {
 
 export default function Checks() {
   const store = useStore();
-  const list = checks();
   // The checks run on the active stock take's XBS import; name it and its snapshot time.
   const st = store.stockTakes.find((s) => s.status !== "Completed") ?? store.stockTakes[0];
+  // With a shipment tracker loaded, the contract checks use it as at the count date; then the part lots.
+  const tracker = store.shipments?.lines;
+  const cutOff = store.kpiCountDate ?? new Date().toISOString().slice(0, 10);
+  const states = tracker?.length ? contractStates(tracker, cutOff, store.xbsStuffing?.rows) : undefined;
+  const ageing = thirdPartyAgeing(allLines(), SITES, store.thirdPartyAgeingDays ?? TP_AGEING_DEFAULT, store.thirdPartyCallOffDays ?? CALL_OFF_DEFAULT);
+  const order = { high: 0, medium: 1, low: 2 };
+  // Sub-product registers: what has waited too long to be bulked or sold (only once they are loaded).
+  const subChecks = store.subProducts?.rows.length ? subProductChecks(store.subProducts.rows, cutOff, store.subProductAgeDays ?? SUBPRODUCT_AGE_DEFAULT) : [];
+  const list = [...checks(states, ageing.callOff), ...partLotChecks(allLines(), SITES, states?.open), ageing.check, ...subChecks].sort((a, b) => order[a.severity] - order[b.severity]);
   const imp = IMPORTS.find((i) => i.id === st?.importId) ?? IMPORTS.find((i) => i.status === "Imported");
   const [open, setOpen] = useState<string | null>(list[0].id);
   const [assigned, setAssigned] = useState<Record<string, boolean>>({});
@@ -46,6 +64,49 @@ export default function Checks() {
           </div>
         ))}
       </div>
+
+      {ageing.rows.length > 0 && (
+        <section className="panel">
+          <div className="row-between">
+            <h2 className="h3">Third-party stock by age</h2>
+            <span className="muted small">60 kg bags · days in stock on the XBS snapshot</span>
+          </div>
+          <div className="table-wrap">
+            <table className="table table-tight">
+              <thead>
+                <tr>
+                  <th>Warehouse</th>
+                  {ageing.labels.map((b) => (
+                    <th key={b} className="num">
+                      {b}
+                    </th>
+                  ))}
+                  <th className="num">Total</th>
+                  <th className="num">Over {ageing.callOff} days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ageing.rows.map((r) => (
+                  <tr key={r.site}>
+                    <td>{r.name}</td>
+                    {r.bags.map((b, i) => (
+                      <td key={i} className="num" title={`${r.lots[i]} lot${r.lots[i] === 1 ? "" : "s"}`}>
+                        {b ? n(Math.round(b)) : <span className="muted">—</span>}
+                      </td>
+                    ))}
+                    <td className="num">{n(Math.round(r.total))}</td>
+                    <td className="num">{r.over ? <strong>{n(Math.round(r.over))}</strong> : <span className="muted">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted small">
+            Call-off rule {ageing.callOff} days (setting ThirdPartyAgeDays) and buckets (ThirdPartyAgeingDays) until Trade and Logistics agree them (D6). Lots
+            within a week of the rule are listed below to call off in time.
+          </p>
+        </section>
+      )}
 
       <ul className="checks">
         {list.map((c) => {

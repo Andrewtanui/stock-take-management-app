@@ -22,6 +22,7 @@ import type {
   XbsLine,
 } from "../types";
 import type { AllocationData, DataSource, MgmtData } from "./types";
+import { planCountImport } from "../count-import";
 import type { CounterProfile } from "../types";
 
 const lines = raw as XbsLine[];
@@ -30,6 +31,8 @@ const TODAY = { date: "Wed 4 Mar 2026", now: "09:15", countDay: "Mon 2 Mar 2026"
 
 const SITES: Site[] = [
   { code: "IBR", name: "Ibero Export Warehouse", short: "Ibero", thirdParty: false, manualEntry: true },
+  // Second Ibero building (same compound and team); no stock yet.
+  { code: "IBM", name: "Ibero Mill Export", short: "Mill Export", thirdParty: false, manualEntry: true },
   { code: "AGL", name: "AGL", short: "AGL", thirdParty: true, manualEntry: false },
   { code: "KPCU", name: "New KPCU", short: "New KPCU", thirdParty: true, manualEntry: false },
   { code: "MAXA", name: "Maxa Africa Logistics", short: "Maxa", thirdParty: true, manualEntry: false },
@@ -351,6 +354,24 @@ let importN = 0;
 
 export const mockSource: DataSource = {
   kind: "mock",
+  // The physical count import against the demo's XBS snapshot (2 Mar 2026): the preview works, the load only pretends.
+  async planCounts(csvText, opt) {
+    const plan = planCountImport(
+      csvText,
+      "2026-03-02",
+      SITES.map((x) => ({ code: x.code, name: x.name, shortName: x.short, thirdParty: x.thirdParty })),
+      lines.map((l, i) => ({ id: String(i), batch: l.b, outturn: l.o, grade: l.i, zone: l.z ?? "", site: l.wh, bfp: l.t === "B", kg: l.kg })),
+      opt,
+    );
+    return { plan, stockTake: "Monthly Stock Take - 02/03/2026 (demo)", countDate: "2026-03-02", counting: true, alreadyLoaded: 0, xbsKg: lines.reduce((a, l) => a + l.kg, 0) };
+  },
+  async importCounts(plan, _file, onProgress) {
+    const total = plan.stacks.length + plan.lines.length;
+    for (let done = 0; done < total; done += 40) {
+      onProgress?.(Math.min(done + 40, total), total);
+      await new Promise((r) => setTimeout(r, 30));
+    }
+  },
   async load(): Promise<MgmtData> {
     // Demo of a fresh environment (no import, no stock take yet): open the app with ?empty
     if (new URLSearchParams(location.search).has("empty"))
@@ -397,6 +418,7 @@ export const mockSource: DataSource = {
   closeStockTake: ok,
   addReconItem: async () => `demo-recon-${Date.now()}`,
   removeReconItem: ok,
+  addComment: async () => `demo-comment-${Date.now()}`,
   async importComtras(upload, onProgress) {
     onProgress?.(upload.lines.length, upload.lines.length);
   },

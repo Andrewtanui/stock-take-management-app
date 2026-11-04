@@ -186,6 +186,16 @@
           "entitySetName": "stk_xbsstuffings",
           "logicalName": "stk_xbsstuffing",
           "isHidden": false
+        },
+        "comments": {
+          "entitySetName": "stk_comments",
+          "logicalName": "stk_comment",
+          "isHidden": false
+        },
+        "sub_productregisterrows": {
+          "entitySetName": "stk_subproducts",
+          "logicalName": "stk_subproduct",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

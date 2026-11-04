@@ -67,8 +67,8 @@ export function typos(a: string, b: string) {
 }
 
 /**
- * A third-party site the counter closed: reported empty, or finished (every stack counted).
- * Either way, every lot XBS has there that wasn't counted counts as 0.
+ * A third-party site closed: reported empty, or finished (every stack counted) - either way every
+ * lot XBS has there that wasn't counted counts as 0 - or not counted on purpose (the XBS figure stands).
  */
 export interface EmptySite {
   site: SiteCode;
@@ -79,6 +79,11 @@ export interface EmptySite {
   reason: string;
   /** Finished after counting its stacks (rather than found empty). */
   finished?: boolean;
+  /**
+   * Not counted on purpose (too little to count): closed for the count close, but nothing there is
+   * judged - no variances, the XBS figure stands.
+   */
+  notCounted?: boolean;
 }
 
 export function draftVariances(
@@ -114,7 +119,7 @@ export function draftVariances(
     if (!thirdParty.has(s.site)) for (const l of xbs) if (l.wh === s.site && l.z === s.stack) judge.add(lotKey(l.wh, s.stack, l.b));
   for (const [k, cs] of counted) if (cs.some((c) => submitted.has(`${c.site}|${c.stack}`))) judge.add(k);
   // A site reported empty or finished: every lot XBS has there is judged (not counted = 0).
-  const emptyAt = new Map(emptySites.filter((e) => thirdParty.has(e.site)).map((e) => [e.site, e]));
+  const emptyAt = new Map(emptySites.filter((e) => thirdParty.has(e.site) && !e.notCounted).map((e) => [e.site, e]));
   for (const l of xbs) if (emptyAt.has(l.wh)) judge.add(lotKey(l.wh, "", l.b));
 
   // A counted lot XBS has, at the same place, with the same units and weight and an outturn at most

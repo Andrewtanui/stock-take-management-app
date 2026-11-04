@@ -4,7 +4,7 @@ import { allocate, buildAreas, ruleBreaks, type AllocCounter, type Area, type Pl
 import { SITES, allLines, can } from "../data/repository";
 import { useStore } from "../data/store";
 import type { AllocationChange, CounterProfile, CountRow, SiteCode } from "../data/types";
-import { zoneInSection } from "../shared/sections";
+import { hasLayout, layoutOf, zoneInSection } from "../shared/sections";
 import { Chip, PageHead, ReadOnly, Stat, Tabs, n } from "../ui/kit";
 
 const now = () => new Date().toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -83,7 +83,7 @@ function AllocateTab() {
     for (const a of buildAreas(lines, counters.length, thirdParty, siteName)) {
       const tally = new Map<string, number>();
       for (const c of store.counts) {
-        if (a.site === "IBR" ? c.site !== "IBR" || !zoneInSection(c.stack, a.section) : c.site !== a.site) continue;
+        if (hasLayout(a.site) ? c.site !== a.site || !zoneInSection(c.stack, a.section, a.site) : c.site !== a.site) continue;
         const id = idOf(c);
         if (id) tally.set(id, (tally.get(id) ?? 0) + 1);
       }
@@ -94,7 +94,7 @@ function AllocateTab() {
         continue;
       }
       fixed.push({ counterId: who, area: a });
-      if (a.site !== "IBR") placed.set(a.site, taken.add(who));
+      if (!hasLayout(a.site)) placed.set(a.site, taken.add(who));
     }
     const nameOf = (id: string) => profiles.find((p) => p.userId === id)?.name ?? store.allocation.people.find((p) => p.id === id)?.name ?? "Counter";
     const gone = [...new Set(fixed.map((f) => f.counterId))].filter((id) => !present.has(id)).map((id) => ({ id, name: nameOf(id), closed: true }) as AllocCounter);
@@ -112,7 +112,7 @@ function AllocateTab() {
   const rebalance = () => {
     if (!published) return;
     const counted = (row: Plan["rows"][number], a: Area) =>
-      a.site === "IBR" ? store.counts.some((c) => c.site === "IBR" && zoneInSection(c.stack, a.section)) : store.counts.some((c) => c.site === a.site && c.by === row.name);
+      hasLayout(a.site) ? store.counts.some((c) => c.site === a.site && zoneInSection(c.stack, a.section, a.site)) : store.counts.some((c) => c.site === a.site && c.by === row.name);
     const fixed: { counterId: string; area: Area }[] = [];
     const rest: Area[] = [];
     for (const row of published.plan.rows) for (const a of row.areas) (counted(row, a) ? fixed.push({ counterId: row.counterId, area: a }) : rest.push(a));
@@ -276,7 +276,7 @@ function AllocateTab() {
                     </td>
                     <td>
                       <span className="area-chips">
-                        {r.areas.length ? r.areas.map((a) => <Chip key={a.key} tone={a.site === "IBR" ? "info" : "warn"}>{a.label}</Chip>) : <span className="muted">Nothing</span>}
+                        {r.areas.length ? r.areas.map((a) => <Chip key={a.key} tone={hasLayout(a.site) ? "info" : "warn"}>{a.label}</Chip>) : <span className="muted">Nothing</span>}
                       </span>
                     </td>
                     <td className="num">{n(r.bags)}</td>
@@ -365,7 +365,9 @@ function ProfilesTab() {
   };
   const save = () => {
     if (!edit?.userId) return;
-    store.saveCounterProfile({ ...edit, homeRows: rows.toUpperCase().split(/[,\s]+/).filter((r) => /^[A-G]$/.test(r)) });
+    // Home rows are rows of the home building (Export Warehouse A–G, Mill Export A–J).
+    const valid = layoutOf(hasLayout(edit.homeSite) ? edit.homeSite : "IBR").rows;
+    store.saveCounterProfile({ ...edit, homeRows: rows.toUpperCase().split(/[,\s]+/).filter((r) => r.length === 1 && valid.includes(r)) });
     setEdit(null);
   };
 
@@ -416,7 +418,7 @@ function ProfilesTab() {
               </select>
             </label>
             <label className="field">
-              <span className="field-label">Home rows (Ibero)</span>
+              <span className="field-label">Home rows (in the home Ibero building)</span>
               <input className="input" value={rows} onChange={(e) => setRows(e.target.value)} placeholder="e.g. D, E" />
             </label>
             <label className="check-line">

@@ -113,6 +113,13 @@ export default function StockTakes() {
   );
 }
 
+/** The count day a new stock take starts on: the last day of last month for a monthly count, else today (local dates). */
+function dayFor(type: StockTakeType) {
+  const now = new Date();
+  const d = type === "Monthly stock take" ? new Date(now.getFullYear(), now.getMonth(), 0) : now;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function NewStockTake({ onClose }: { onClose: () => void }) {
   const store = useStore();
   const [type, setType] = useState<StockTakeType>("Monthly stock take");
@@ -120,8 +127,10 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
   const [sites, setSites] = useState<SiteCode[]>(SITES.map((s) => s.code));
   const usable = IMPORTS.filter((i) => i.status === "Imported" || i.status === "Validated");
   const [imp, setImp] = useState(usable[0]?.id ?? "");
-  // The count day (month-end), not necessarily today: the stock take is dated by when the bags are counted.
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  // The count day, not necessarily today: the stock take is dated by when the bags are counted. A monthly
+  // count is of the month just ended (created in the first days of the next), so it starts on that month's
+  // last day; an ad hoc or 100% count on today.
+  const [day, setDay] = useState(() => dayFor("Monthly stock take"));
   const date = day ? day.split("-").reverse().join("/") : "";
   const title = `${shortType(type)} Stock Take - ${date}`;
   const chosen = all ? SITES.map((s) => s.code) : sites;
@@ -144,7 +153,7 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
         <legend className="field-label">Type</legend>
         <div className="seg">
           {(["Monthly stock take", "Ad hoc stock take", "100% stock take"] as StockTakeType[]).map((t) => (
-            <button key={t} type="button" aria-pressed={type === t} onClick={() => setType(t)}>
+            <button key={t} type="button" aria-pressed={type === t} onClick={() => (setType(t), setDay(dayFor(t)))}>
               {t}
             </button>
           ))}

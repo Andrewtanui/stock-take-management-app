@@ -24,6 +24,12 @@ import { Stk_assignmentsService } from "../../generated/services/Stk_assignments
 import { Stk_comtraspositionsService } from "../../generated/services/Stk_comtraspositionsService";
 import { Stk_reconitemsService } from "../../generated/services/Stk_reconitemsService";
 import { Stk_reconitemsstk_kind } from "../../generated/models/Stk_reconitemsModel";
+import { Stk_subproductsService } from "../../generated/services/Stk_subproductsService";
+import { Stk_subproductsstk_kind, Stk_subproductsstk_register } from "../../generated/models/Stk_subproductsModel";
+import type { SubProductRegister, SubProductRow, SubProductUpload } from "../subproducts-parse";
+import { planCountImport, type CountImportPlan, type CountPreview, type ImportLot, type ImportOptions, type ImportSite } from "../count-import";
+import { Stk_commentsService } from "../../generated/services/Stk_commentsService";
+import { Stk_commentsstk_department } from "../../generated/models/Stk_commentsModel";
 import type { ComtrasLineType, ComtrasUpload } from "../comtras-parse";
 import { Stk_allocationrunsService } from "../../generated/services/Stk_allocationrunsService";
 import { Stk_counterprofilesService } from "../../generated/services/Stk_counterprofilesService";
@@ -55,6 +61,7 @@ import { Stk_stocktakesstk_status, Stk_stocktakesstk_type } from "../../generate
 import { Stk_xbsimportsstk_status } from "../../generated/models/Stk_xbsimportsModel";
 import { Stk_stacksstk_status } from "../../generated/models/Stk_stacksModel";
 import { Stk_countlinesstk_category, Stk_countlinesstk_reason } from "../../generated/models/Stk_countlinesModel";
+import { Stk_xbslinesstk_stocktype } from "../../generated/models/Stk_xbslinesModel";
 import { Stk_basketmapsstk_primarybasket } from "../../generated/models/Stk_basketmapsModel";
 import { Stk_signoffsstk_action, Stk_signoffsstk_gate } from "../../generated/models/Stk_signoffsModel";
 import { Stk_mappingchangesstk_state, Stk_mappingchangesstk_target } from "../../generated/models/Stk_mappingchangesModel";
@@ -87,6 +94,7 @@ import type {
   Priority,
   Issue,
   ReconItem,
+  ThreadComment,
   RootCause,
   SheetStatus,
   Site,
@@ -102,7 +110,7 @@ import type {
 import type { AssistantAnswer, DataSource, MgmtData, Signature, Signer, Today, XbsUploadToSave } from "./types";
 import { assignmentFor, type Plan } from "../allocate";
 import { AUTO_DEFAULTS, priorityFor } from "../auto-decide";
-import { sectionList, sectionRows, sectionsWords } from "../../shared/sections";
+import { hasLayout, sectionList, sectionRows, sectionsWords } from "../../shared/sections";
 import {
   L1_PDF_SUBJECT,
   addWorkingDays,
@@ -401,6 +409,15 @@ async function load(): Promise<MgmtData> {
     console.warn("XBS stuffing dates not read:", e);
     return [];
   })) as unknown as StuffingRow[];
+  // The warehouse's sub-product registers loaded for this stock take, if any.
+  const subRows = (await all(
+    (o) => Stk_subproductsService.getAll(o),
+    { select: SUB_SELECT as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`, orderBy: ["stk_rownumber asc"] },
+    "read the sub-product registers",
+  ).catch((e: unknown) => {
+    console.warn("Sub-product registers not read:", e);
+    return [];
+  })) as unknown as SubRow[];
   // Trading's direct purchase lots loaded for this stock take, if any.
   const directRows = (await all(
     (o) => Stk_directlotsService.getAll(o),
@@ -415,13 +432,22 @@ async function load(): Promise<MgmtData> {
     { select: ["stk_reconitemid", "stk_name", "stk_kind", "stk_bags", "stk_inxbs", "stk_note", "createdon", "_createdby_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`, orderBy: ["createdon asc"] },
     "read the reconciling items",
   );
+  // Comment threads; an environment without the table yet (before dv:schema) just has none.
+  const commentRows = (await all(
+    (o) => Stk_commentsService.getAll(o),
+    { select: ["stk_commentid", "stk_text", "stk_department", "_stk_exception_value", "_stk_variance_value", "createdon", "_createdby_value"] as never, orderBy: ["createdon asc"] },
+    "read the comments",
+  ).catch((e: unknown) => {
+    console.warn("Comments not read:", e);
+    return [];
+  })) as unknown as CommentRow[];
   const [sheetRows, assignmentRows, stackRows, recountRows] = await Promise.all([
     all((o) => Stk_countsheetsService.getAll(o), { select: ["stk_countsheetid", "stk_name", "stk_status", "stk_submittedon", "stk_countercomment", "stk_decisioncomment", "stk_linecount", "stk_variancecount", "stk_bags", "_stk_site_value", "_stk_assignment_value", "_stk_stocktake_value", "_createdby_value"] }, "read count sheets"),
     all((o) => Stk_assignmentsService.getAll(o), { select: ["stk_assignmentid", "stk_rows", "stk_sections", "_stk_site_value", "_stk_counter_value", "_stk_stocktake_value"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid} and statecode eq 0` }, "read assignments"),
     all(
       (o) => Stk_stacksService.getAll(o),
       {
-        select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value", "stk_nothinghere", "stk_sitefinished", "stk_comment", "stk_submittedon", "_stk_submittedby_value"] as never,
+        select: ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value", "stk_nothinghere", "stk_sitefinished", "stk_notcounted", "stk_comment", "stk_submittedon", "_stk_submittedby_value"] as never,
         filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}`,
       },
       "read stacks",
@@ -468,6 +494,7 @@ async function load(): Promise<MgmtData> {
     ...assignmentRows.map((r) => r._stk_counter_value),
     ...countRows.map((r) => r._createdby_value),
     ...reconRows.map((r) => (r as { _createdby_value?: string })._createdby_value),
+    ...commentRows.map((r) => r._createdby_value),
     ...(stackRows as unknown as { _stk_submittedby_value?: string }[]).map((r) => r._stk_submittedby_value),
     ...issueRows.flatMap((r) => [r._createdby_value, r._stk_assignedto_value]),
   ]);
@@ -709,7 +736,7 @@ async function load(): Promise<MgmtData> {
     if (c.stk_isother || !c.stk_outturn) continue;
     const site = siteCode.get(c._stk_site_value!);
     const stack = stackName.get(c._stk_stack_value!);
-    const expected = lines.filter((l) => l.b === c.stk_batch && l.wh === site && (site !== "IBR" || l.z === stack));
+    const expected = lines.filter((l) => l.b === c.stk_batch && l.wh === site && (thirdParty.has(site) || l.z === stack));
     const key = `${site}|${stack}|${c.stk_batch}`;
     const xbsBags = seenLot.has(key) ? 0 : expected.reduce((s, l) => s + l.bg, 0);
     seenLot.add(key);
@@ -964,8 +991,12 @@ async function load(): Promise<MgmtData> {
     shipments: shipmentRows.length
       ? { file: shipmentRows[0].stk_source ?? "Shipment tracker", at: stamp(shipmentRows[0].createdon), by: nm(shipmentRows[0]._createdby_value), lines: shipmentRows.map(shipmentLineOf) }
       : undefined,
+    subProducts: subRows.length ? subProductsOf(subRows) : undefined,
     xbsStuffing: stuffingRows.length ? { files: [...new Set(stuffingRows.map((r) => r.stk_source ?? "XBS shipped report"))], rows: stuffingRows.map(stuffingOf) } : undefined,
     afloatAgeingDays: ageingDays(settingRows.find((x) => x.stk_name === "AfloatAgeingDays")?.stk_value),
+    thirdPartyAgeingDays: ageingDays(settingRows.find((x) => x.stk_name === "ThirdPartyAgeingDays")?.stk_value),
+    thirdPartyCallOffDays: ageingDays(settingRows.find((x) => x.stk_name === "ThirdPartyAgeDays")?.stk_value)?.[0],
+    subProductAgeDays: ageingDays(settingRows.find((x) => x.stk_name === "SubProductAgeDays")?.stk_value)?.[0],
     directLots: directRows.length
       ? { file: directRows[0].stk_source ?? "Direct purchases", at: stamp(directRows[0].createdon), by: nm(directRows[0]._createdby_value), lots: directRows.map(directLotOf) }
       : undefined,
@@ -984,7 +1015,7 @@ async function load(): Promise<MgmtData> {
       users,
       packTypes: packRows.map((p) => ({ id: p.stk_code ?? p.stk_name, label: p.stk_name, kg: Number(p.stk_kgperbag ?? 60), grades: p.stk_gradepattern ?? "All other grades" })),
       stockTakeGroups: assignmentRows.map((a) => ({ name: areaOf(a), site: sites.find((x) => x.code === siteCode.get(a._stk_site_value!))?.short ?? "", locations: areaOf(a), counters: 1 })),
-      // Shipment tracker isn't in Dataverse yet, so the contract checks have nothing to compare against.
+      // The contract checks read the stock take's shipment tracker from the store (Pre-count checks).
       contracts: { cancelled: [], shipped: [], stuffed: [] },
       people: [...ids.person.keys()],
       physDelta,
@@ -1015,7 +1046,37 @@ async function load(): Promise<MgmtData> {
         at: stamp(x.createdon),
       };
     }),
+    comments: commentsOf(commentRows, nm),
   };
+}
+
+interface CommentRow {
+  stk_commentid: string;
+  stk_text?: string;
+  stk_department?: number;
+  _stk_exception_value?: string;
+  _stk_variance_value?: string;
+  createdon?: string;
+  _createdby_value?: string;
+}
+
+/** Threads keyed the way the screens know their subjects: EX-### for exceptions, the id for variances. */
+function commentsOf(rows: CommentRow[], nm: (id?: string) => string): ThreadComment[] {
+  const exName = new Map([...ids.exception].map(([name, id]) => [id, name]));
+  return rows.flatMap((r) => {
+    const ex = r._stk_exception_value && exName.get(r._stk_exception_value);
+    const target = ex || r._stk_variance_value;
+    if (!target) return [];
+    return [{
+      id: r.stk_commentid,
+      on: ex ? "Exception" : "Variance",
+      target,
+      text: r.stk_text ?? "",
+      dept: (label(Stk_commentsstk_department, r.stk_department) ?? "Operations") as Dept,
+      by: nm(r._createdby_value),
+      at: stamp(r.createdon),
+    } as ThreadComment];
+  });
 }
 
 /* ---------- Level 1 summary PDF ---------- */
@@ -1159,9 +1220,10 @@ async function publishAllocation(input: { plan: Plan; present: string[]; changes
     for (const a of row.areas) bySite.set(a.site, [...(bySite.get(a.site) ?? []), a]);
     for (const [site, areas] of bySite) {
       const { sections, bags } = assignmentFor(areas);
-      const rows = [...new Set(sectionList(sections).flatMap(sectionRows))];
-      // "<counter> · Ibero rows A, B and G" / "<counter> · AGL whole site" - F9 sends the part after " · ".
-      const where = site === "IBR" ? sectionsWords(sectionList(sections)) : "whole site";
+      const rows = [...new Set(sectionList(sections, site).flatMap((t) => sectionRows(t, site)))];
+      // "<counter> · Ibero rows A, B and G" / "<counter> · Mill Export row D, bays 15–19" /
+      // "<counter> · AGL whole site" - F9 sends the part after " · ".
+      const where = hasLayout(site) ? sectionsWords(sectionList(sections, site), site) : "whole site";
       const fields = {
         stk_name: `${row.name} · ${SITES.find((x) => x.code === site)?.short ?? site} ${where}`.slice(0, 100),
         stk_sections: sections || null,
@@ -1537,6 +1599,22 @@ function comtrasPosition(rows: ComtrasRow[], nm: (id?: string) => string) {
   };
 }
 
+async function addComment(c: ThreadComment) {
+  const exId = c.on === "Exception" ? ids.exception.get(c.target) : undefined;
+  if (c.on === "Exception" && !exId) throw new Error(`Exception ${c.target} not found`);
+  return unwrap(
+    await Stk_commentsService.create({
+      stk_name: `${c.target} · ${c.text}`.slice(0, 100),
+      statecode: 0,
+      stk_text: c.text.slice(0, 2000),
+      stk_department: code(Stk_commentsstk_department, c.dept),
+      ...(ids.stockTakeId && ids.stockTakeId !== NO_STOCK_TAKE ? { "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId) } : {}),
+      ...(exId ? { "stk_exception@odata.bind": bind("stk_exceptions", exId) } : { "stk_variance@odata.bind": bind("stk_variances", c.target) }),
+    } as never),
+    "add the comment",
+  ).stk_commentid;
+}
+
 async function addReconItem(i: ReconItem) {
   if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Start the stock take first.");
   return unwrap(
@@ -1823,7 +1901,263 @@ const stuffingOf = (r: StuffingRow): XbsStuffing => ({
   bags: Number(r.stk_bags ?? 0),
   lots: r.stk_lots ?? 0,
 });
-/** Setting AfloatAgeingDays, e.g. "30,60": ascending whole days; anything else -> the default. */
+const SUB_SELECT = ["stk_source", "stk_register", "stk_kind", "stk_bookedon", "stk_ref", "stk_contract", "stk_quality", "stk_bags", "stk_pockets", "stk_kg", "stk_location", "stk_status", "stk_sheet", "stk_rownumber"];
+type SubRow = { stk_source?: string; stk_register?: number; stk_kind?: number; stk_bookedon?: string; stk_ref?: string; stk_contract?: string; stk_quality?: string; stk_bags?: number; stk_pockets?: number; stk_kg?: number; stk_location?: string; stk_status?: string; stk_sheet?: string; stk_rownumber?: number };
+function subProductsOf(rows: SubRow[]) {
+  const files: Partial<Record<SubProductRegister, string>> = {};
+  const out = rows.map((r): SubProductRow => {
+    const reg = (label(Stk_subproductsstk_register, r.stk_register) ?? "Sub-products report") as SubProductRegister;
+    files[reg] ??= r.stk_source ?? reg;
+    return {
+      kind: (label(Stk_subproductsstk_kind, r.stk_kind) ?? "Ex-office sweepings") as SubProductRow["kind"],
+      on: r.stk_bookedon?.slice(0, 10),
+      ref: r.stk_ref ?? "",
+      contract: r.stk_contract ?? undefined,
+      quality: r.stk_quality ?? undefined,
+      bags: r.stk_bags ?? 0,
+      pockets: r.stk_pockets ?? 0,
+      kg: Number(r.stk_kg ?? 0),
+      location: r.stk_location ?? undefined,
+      status: r.stk_status ?? undefined,
+      sheet: r.stk_sheet ?? "",
+      row: r.stk_rownumber ?? 0,
+    };
+  });
+  return { files, rows: out };
+}
+
+/**
+ * A sub-product register is a snapshot like XBS: one file per register per stock take, never changed.
+ * A load that stopped part way is finished with the same file (rows already saved are skipped); a
+ * different file for a register already loaded is refused.
+ */
+async function importSubProducts(u: SubProductUpload, onProgress?: (done: number, total: number) => void) {
+  if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Start the stock take first; the sub-product registers are loaded for it.");
+  const reg = code(Stk_subproductsstk_register, u.register);
+  const saved = (await all((o) => Stk_subproductsService.getAll(o), { select: ["stk_key", "stk_source"] as never, filter: `_stk_stocktake_value eq ${ids.stockTakeId} and stk_register eq ${reg}` }, "check the sub-product registers")) as unknown as { stk_key?: string; stk_source?: string }[];
+  const other = saved.find((r) => r.stk_source && r.stk_source !== u.file.slice(0, 200));
+  if (other) throw new Error(`The ${u.register.toLowerCase()} is already loaded for this stock take (${other.stk_source}); it is kept as it was.`);
+  const have = new Set(saved.map((r) => r.stk_key));
+  const keyOf = (x: SubProductRow) => `${u.register[0]}|${x.sheet.slice(0, 40)}|${x.row}`.slice(0, 60);
+  const queue = u.rows.filter((x) => !have.has(keyOf(x)));
+  if (!queue.length) throw new Error(`Every row of ${u.file} is already loaded for this stock take.`);
+  let done = u.rows.length - queue.length;
+  let failed = false;
+  await Promise.all(
+    Array.from({ length: 6 }, async () => {
+      for (let x = queue.shift(); x && !failed; x = queue.shift()) {
+        const res = await Stk_subproductsService.create({
+          stk_name: `${x.kind} · ${x.ref || "-"} · ${x.on ?? ""}`.slice(0, 100),
+          statecode: 0,
+          stk_key: keyOf(x),
+          stk_source: u.file.slice(0, 200),
+          stk_register: reg,
+          stk_kind: code(Stk_subproductsstk_kind, x.kind),
+          stk_bookedon: x.on ?? null,
+          stk_ref: x.ref.slice(0, 30),
+          stk_contract: x.contract?.slice(0, 20) ?? null,
+          stk_quality: x.quality?.slice(0, 60) ?? null,
+          stk_bags: Math.round(x.bags),
+          stk_pockets: Math.round(x.pockets),
+          stk_kg: Math.round(x.kg * 100) / 100,
+          stk_location: x.location?.slice(0, 30) ?? null,
+          stk_status: x.status?.slice(0, 100) ?? null,
+          stk_sheet: x.sheet.slice(0, 60),
+          stk_rownumber: x.row,
+          "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
+        } as never);
+        if (!res.success && !isDuplicateKey(res.error)) {
+          failed = true;
+          unwrap(res, `save ${x.kind} ${x.ref}`);
+        }
+        onProgress?.(++done, u.rows.length);
+      }
+    }),
+  );
+}
+
+/* ---------- physical count from the old app (count-import.ts) ---------- */
+
+/** What the count import needs from Dataverse: the active stock take, its sites and XBS lots. */
+async function countImportInputs() {
+  if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Create the stock take first; the count is loaded into it.");
+  const take = unwrap(await Stk_stocktakesService.get(ids.stockTakeId, { select: ["stk_name", "stk_status", "stk_countdate", "_stk_import_value"] } as never), "read the stock take") as unknown as {
+    stk_name: string;
+    stk_status?: number;
+    stk_countdate?: string;
+    _stk_import_value?: string;
+  };
+  const siteRows = (await all((o) => Stk_sitesService.getAll(o), { select: ["stk_siteid", "stk_code", "stk_name", "stk_shortname", "stk_isthirdparty"] as never }, "read the warehouses")) as unknown as {
+    stk_siteid: string;
+    stk_code: string;
+    stk_name: string;
+    stk_shortname?: string;
+    stk_isthirdparty?: boolean;
+  }[];
+  const codeOf = new Map(siteRows.map((r) => [r.stk_siteid, r.stk_code as SiteCode]));
+  const xbs = (await all(
+    (o) => Stk_xbslinesService.getAll(o),
+    { select: ["stk_xbslineid", "stk_name", "stk_outturn", "stk_grade", "stk_zone", "stk_stocktype", "stk_kg", "_stk_site_value"] as never, filter: `_stk_import_value eq ${take._stk_import_value}`, orderBy: ["stk_rownumber asc"] },
+    "read the XBS stock",
+  )) as unknown as { stk_xbslineid: string; stk_name: string; stk_outturn?: string; stk_grade?: string; stk_zone?: string; stk_stocktype?: number; stk_kg?: number; _stk_site_value?: string }[];
+  const sites: ImportSite[] = siteRows.map((r) => ({ code: r.stk_code as SiteCode, name: r.stk_name, shortName: r.stk_shortname ?? undefined, thirdParty: !!r.stk_isthirdparty }));
+  const lots: ImportLot[] = xbs.map((l) => ({
+    id: l.stk_xbslineid,
+    batch: l.stk_name,
+    outturn: l.stk_outturn ?? "",
+    grade: l.stk_grade ?? "",
+    zone: l.stk_zone ?? "",
+    site: codeOf.get(l._stk_site_value ?? "")!,
+    bfp: label(Stk_xbslinesstk_stocktype, l.stk_stocktype) === "Blocked for processing",
+    kg: Number(l.stk_kg ?? 0),
+  }));
+  return { take, siteRows, sites, lots };
+}
+
+/** Reads the old app's CSV against the active stock take: what would be loaded. Writes nothing. */
+async function planCounts(csvText: string, opt: ImportOptions): Promise<CountPreview> {
+  const { take, sites, lots } = await countImportInputs();
+  if (!take.stk_countdate) throw new Error(`${take.stk_name} has no count date.`);
+  const plan = planCountImport(csvText, take.stk_countdate, sites, lots, opt);
+  const tag = `old-${ids.stockTakeId.slice(0, 8)}-`;
+  const saved = await all((o) => Stk_countlinesService.getAll(o), { select: ["stk_clientid"] as never, filter: `startswith(stk_clientid,'${tag}')` }, "check for an earlier load");
+  const have = new Set((saved as unknown as { stk_clientid?: string }[]).map((r) => r.stk_clientid));
+  return {
+    plan,
+    stockTake: take.stk_name,
+    countDate: take.stk_countdate,
+    counting: label(Stk_stocktakesstk_status, take.stk_status) === "Count in progress",
+    alreadyLoaded: plan.lines.filter((l) => have.has(`${tag}${l.rows[0]}`)).length,
+    xbsKg: lots.reduce((a, l) => a + l.kg, 0),
+  };
+}
+
+/**
+ * Loads the planned count as the counter app would have saved it: one count sheet per warehouse
+ * (CS-OLD-<site>), the stacks submitted, the lines keyed "old-<stock take>-<CSV line>". A load that
+ * stopped part way is finished with the same file: sheets, stacks and lines already there are reused.
+ */
+async function importCounts(plan: CountImportPlan, file: string, onProgress?: (done: number, total: number) => void) {
+  const { take, siteRows } = await countImportInputs();
+  if (label(Stk_stocktakesstk_status, take.stk_status) !== "Count in progress") throw new Error(`${take.stk_name} isn't in Count in progress; the count can't be loaded into it.`);
+  if (plan.errors.length) throw new Error(`${plan.errors.length} line(s) of the file can't be loaded. Fix the file first.`);
+  const st = ids.stockTakeId;
+  const siteId = new Map(siteRows.map((r) => [r.stk_code as SiteCode, r.stk_siteid]));
+  const packs = (await all((o) => Stk_packtypesService.getAll(o), { select: ["stk_packtypeid", "stk_kgperbag"] as never }, "read packing types")) as unknown as { stk_packtypeid: string; stk_kgperbag?: number }[];
+  const packOf = (kg: number) => packs.find((p) => Number(p.stk_kgperbag) === kg)?.stk_packtypeid;
+  if (plan.lines.some((l) => !packOf(l.packKg))) throw new Error("A packing type (50 or 60 kg) is missing in Set-up.");
+  const tag = `old-${st.slice(0, 8)}-`;
+  const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);
+  const latest = (xs: { at: string }[]) => (xs.length ? xs.map((x) => x.at).sort().at(-1)! : new Date().toISOString());
+
+  // What an earlier, interrupted load already wrote.
+  const sheetRows = (await all((o) => Stk_countsheetsService.getAll(o), { select: ["stk_countsheetid", "stk_name"] as never, filter: `_stk_stocktake_value eq ${st}` }, "read the count sheets")) as unknown as { stk_countsheetid: string; stk_name: string }[];
+  const stackRows = (await all((o) => Stk_stacksService.getAll(o), { select: ["stk_stackid", "stk_name", "_stk_site_value"] as never, filter: `_stk_stocktake_value eq ${st}` }, "read the stacks")) as unknown as { stk_stackid: string; stk_name: string; _stk_site_value?: string }[];
+  const lineRows = await all((o) => Stk_countlinesService.getAll(o), { select: ["stk_clientid"] as never, filter: `startswith(stk_clientid,'${tag}')` }, "check for an earlier load");
+  const haveLine = new Set((lineRows as unknown as { stk_clientid?: string }[]).map((r) => r.stk_clientid));
+  const todoLines = plan.lines.filter((l) => !haveLine.has(`${tag}${l.rows[0]}`));
+  if (!todoLines.length && haveLine.size) throw new Error(`${file} is already loaded into ${take.stk_name}.`);
+  const total = plan.stacks.length + todoLines.length;
+  let done = 0;
+  const tick = () => onProgress?.(++done, total);
+
+  const sheetOf = new Map<SiteCode, string>();
+  for (const site of new Set(plan.stacks.map((x) => x.site))) {
+    const name = `CS-OLD-${site}`;
+    const had = sheetRows.find((r) => r.stk_name === name);
+    const ls = plan.lines.filter((l) => l.site === site);
+    const fields = {
+      stk_name: name,
+      stk_status: code(Stk_countsheetsstk_status, "Submitted"),
+      stk_submittedon: latest(ls),
+      stk_linecount: ls.length,
+      stk_bags: sum(ls, (l) => l.bags),
+      stk_countercomment: `Loaded from the old Physical Count app (${file}).`.slice(0, 2000),
+    };
+    if (had) {
+      unwrap(await Stk_countsheetsService.update(had.stk_countsheetid, fields as never), `update ${name}`);
+      sheetOf.set(site, had.stk_countsheetid);
+    } else {
+      const res = unwrap(
+        await Stk_countsheetsService.create({ ...fields, statecode: 0, "stk_stocktake@odata.bind": bind("stk_stocktakes", st), "stk_site@odata.bind": bind("stk_sites", siteId.get(site)!) } as never),
+        `save ${name}`,
+      ) as unknown as { stk_countsheetid: string };
+      sheetOf.set(site, res.stk_countsheetid);
+    }
+  }
+
+  const codeOfId = new Map(siteRows.map((r) => [r.stk_siteid, r.stk_code]));
+  const stackId = new Map<string, string>(stackRows.map((r) => [`${codeOfId.get(r._stk_site_value ?? "")}|${r.stk_name}`, r.stk_stackid]));
+  const pool = async <T,>(items: T[], fn: (x: T) => Promise<void>) => {
+    const q = [...items];
+    let failed: unknown;
+    await Promise.all(
+      Array.from({ length: 6 }, async () => {
+        for (let x = q.shift(); x !== undefined && !failed; x = q.shift()) await fn(x).catch((e: unknown) => void (failed = e));
+      }),
+    );
+    if (failed) throw failed;
+  };
+  await pool(plan.stacks, async (s) => {
+    const k = `${s.site}|${s.name}`;
+    if (!stackId.has(k)) {
+      const ls = plan.lines.filter((l) => l.site === s.site && l.stack === s.name);
+      const res = unwrap(
+        await Stk_stacksService.create({
+          stk_name: s.name,
+          statecode: 0,
+          stk_status: code(Stk_stacksstk_status, "Submitted"),
+          stk_submittedon: latest(ls),
+          "stk_submittedby@odata.bind": bind("systemusers", ids.me),
+          ...(s.landmark ? { stk_landmark: s.landmark } : {}),
+          ...(s.comment ? { stk_comment: s.comment } : {}),
+          ...(s.finished ? { stk_sitefinished: true } : {}),
+          ...(s.nothing ? { stk_nothinghere: true } : {}),
+          ...(s.notCounted ? { stk_notcounted: true } : {}),
+          "stk_stocktake@odata.bind": bind("stk_stocktakes", st),
+          "stk_site@odata.bind": bind("stk_sites", siteId.get(s.site)!),
+          "stk_countsheet@odata.bind": bind("stk_countsheets", sheetOf.get(s.site)!),
+        } as never),
+        `save stack ${s.name}`,
+      ) as unknown as { stk_stackid: string };
+      stackId.set(k, res.stk_stackid);
+    }
+    tick();
+  });
+
+  await pool(todoLines, async (e) => {
+    const res = await Stk_countlinesService.create({
+      stk_name: `${e.outturn} @ ${e.stack}`.slice(0, 60),
+      statecode: 0,
+      stk_clientid: `${tag}${e.rows[0]}`,
+      stk_outturn: e.outturn,
+      stk_batch: e.lot?.batch ?? `FOUND:${e.outturn}`, // as the counter app saves a lot XBS doesn't have, so two of them on one stack stay apart
+      stk_grade: e.grade.slice(0, 30),
+      stk_category: code(Stk_countlinesstk_category, e.lot?.bfp ? "Processing stock" : "Current stock"),
+      stk_bags: e.bags,
+      stk_pocketbags: e.pocketBags,
+      stk_pocketkg: Math.round(e.pocketKg * 100) / 100,
+      stk_units: e.bags + e.pocketBags,
+      stk_kg: Math.round(e.kg * 100) / 100,
+      stk_bags60: Math.round((e.kg / 60) * 100) / 100,
+      stk_reason: e.found ? code(Stk_countlinesstk_reason, "Bags moved here, not yet received in XBS") : null,
+      stk_isfound: e.found,
+      stk_isother: false,
+      stk_isblind: false,
+      stk_countedon: e.at,
+      stk_note: `Old app: counted by ${e.clerks.join(", ")}${e.rows.length > 1 ? ` on ${e.rows.length} lines (CSV ${e.rows.join(", ")})` : ` (CSV line ${e.rows[0]})`}.`.slice(0, 2000),
+      "stk_countsheet@odata.bind": bind("stk_countsheets", sheetOf.get(e.site)!),
+      "stk_stack@odata.bind": bind("stk_stacks", stackId.get(`${e.site}|${e.stack}`)!),
+      "stk_site@odata.bind": bind("stk_sites", siteId.get(e.site)!),
+      "stk_packtype@odata.bind": bind("stk_packtypes", packOf(e.packKg)!),
+      ...(e.lot ? { "stk_xbsline@odata.bind": bind("stk_xbslines", e.lot.id) } : {}),
+    } as never);
+    if (!res.success && !isDuplicateKey(res.error)) unwrap(res, `save ${e.outturn}`);
+    tick();
+  });
+}
+
+/** Day settings (AfloatAgeingDays "30,60", ThirdPartyAgeingDays, ThirdPartyAgeDays): ascending whole days; anything else -> the default. */
 const ageingDays = (v?: string) => {
   const d = (v ?? "").split(/[,; ]+/).map(Number).filter((x) => Number.isInteger(x) && x > 0);
   return d.length ? [...new Set(d)].sort((a, b) => a - b) : undefined;
@@ -2152,9 +2486,13 @@ export const dataverseSource: DataSource = {
   importContracts,
   importShipments,
   importXbsStuffing,
+  importSubProducts,
   importDirectLots,
+  planCounts,
+  importCounts,
   addReconItem,
   removeReconItem,
+  addComment,
   decideSheet,
   decideVariance,
   recountLine,

@@ -227,6 +227,8 @@ textarea.input { resize: vertical; }
 .report-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
 .report-grid .card { gap: 6px; }
 .report-grid .btn-row { margin-top: 8px; }
+.dash-panel { padding: 12px; }
+.dash-frame { width: 100%; aspect-ratio: 16 / 10; min-height: 420px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 
 /* ---------- import ---------- */
 .drop { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px; border: 2px dashed color-mix(in srgb, var(--brand-black) 15%, var(--brand-white)); border-radius: var(--r-lg); background: var(--page); text-align: center; color: var(--ink-3); }
@@ -317,6 +319,16 @@ body:has(.vactions) .toast { bottom: 104px; }
 .ladder li.done { color: var(--text); }
 .ladder li.now { background: var(--brand-neumann-green); color: var(--brand-white); }
 .ladder li.hot { background: var(--brand-neumann-red); }
+/* comment threads on exceptions and variances */
+.thread { display: flex; flex-direction: column; gap: 8px; }
+.thread .field-label { display: flex; align-items: center; gap: 6px; }
+.thread-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.thread-list li { padding: 10px 12px; border-radius: var(--r-md); background: var(--page); }
+.thread-meta { font-size: 13px; }
+.thread-text { margin: 4px 0 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.thread-add { display: flex; flex-direction: column; gap: 8px; }
+.thread-add .btn-row { justify-content: space-between; align-items: center; }
+.thread-select { height: 32px; width: auto; padding: 0 8px; font-size: 13px; }
 .bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .bars li { display: grid; grid-template-columns: 210px minmax(0, 1fr) 32px; gap: 14px; align-items: center; font-size: 14px; }
 .bars .num { text-align: right; font-weight: 700; }
@@ -332,6 +344,26 @@ body:has(.vactions) .toast { bottom: 104px; }
 .st-active .step-dot { background: var(--brand-neumann-green); color: var(--brand-white); }
 .step-who { font-weight: 700; }
 /* Sign-off chain, left to right: a column per tier with arrows between. */
+/* Sign-off record: one card per signed gate - who, when, what they confirm, the actions it leaves. */
+.sorec { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.sorec-item { display: grid; grid-template-columns: 230px 1fr; border-radius: var(--r-md); overflow: hidden; box-shadow: inset 0 0 0 1px var(--hair); }
+.sorec-side { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--surface-subtle); border-right: 1px solid var(--hair); }
+.sorec-step { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+.sorec-num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-neumann-green); color: var(--text-on-dark); font-size: 12px; letter-spacing: 0; }
+.sorec-gate { font-size: 16px; line-height: 1.2; }
+.sorec-for { display: block; }
+.sorec-signed { display: inline-flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 4px; font-size: 13px; font-weight: 700; color: var(--brand-neumann-green); }
+.sorec-body { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px; min-width: 0; }
+.sorec-statement { margin: 0; line-height: 1.5; }
+.sorec-actions { display: flex; flex-direction: column; gap: 6px; }
+.sorec-label { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+.sorec-action { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: start; font-size: 14px; line-height: 1.4; }
+.sorec-owner { justify-self: start; padding: 2px 8px; border-radius: 6px; background: var(--surface-subtle); box-shadow: inset 0 0 0 1px var(--hair); font-size: 12px; font-weight: 700; white-space: nowrap; }
+@media (max-width: 720px) {
+  .sorec-item { grid-template-columns: 1fr; }
+  .sorec-side { border-right: 0; border-bottom: 1px solid var(--hair); }
+  .sorec-action { grid-template-columns: 1fr; gap: 4px; }
+}
 .signflow { display: flex; align-items: flex-start; gap: 8px; }
 .signflow-tier { flex: 1 1 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .signflow-head { margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
@@ -485,3 +517,16 @@ body:has(.vactions) .toast { bottom: 104px; }
 .assistant-bubble ul { margin: 0 0 8px; padding-left: 18px; }
 .assistant-bubble li { margin: 2px 0; }
 .assistant-bubble .chip { height: 20px; padding: 0 8px; font-size: 11.5px; vertical-align: 1px; }
+
+/* Reports › Zones: bags per bay on each Ibero building's floor plan. */
+.zone-map-wrap { overflow-x: auto; }
+.zone-map { display: grid; gap: 3px; min-width: 420px; }
+.zone-bay { font-size: 11px; font-weight: 700; color: var(--ink-3); text-align: center; }
+.zone-row { display: grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--ink-2); }
+.zone-row-between { font-size: 10.5px; font-weight: 600; color: var(--ink-3); }
+.zone-cell { height: 22px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hair); }
+.zone-cell-between { height: 12px; align-self: center; }
+.zone-input { max-width: 320px; text-transform: uppercase; }
+.zone-found { display: flex; gap: 10px; align-items: flex-start; color: var(--brand-neumann-green); }
+.zone-found strong { color: var(--text); }
+

@@ -4,13 +4,15 @@
 // others (approve a sheet, close a variance, sign a gate). Power Automate
 // reacts to the saved rows (notifications, escalations).
 
-import type { ReconItem } from "./types";
+import type { ReconItem, ThreadComment } from "./types";
 import type { ComtrasUpload } from "./comtras-parse";
 import type { ContractUpload } from "./contracts-parse";
 import type { ShipmentUpload } from "./shipments-parse";
 import type { XbsStuffingUpload } from "./xbs-shipped-parse";
+import type { SubProductUpload } from "./subproducts-parse";
+import type { CountImportPlan, CountPreview, ImportOptions } from "./count-import";
 import type { DirectUpload } from "./direct-parse";
-import type { ComtrasPosition, ContractJournal, DirectLots, ShipmentTracker, XbsStuffingSet } from "./source/types";
+import type { ComtrasPosition, ContractJournal, DirectLots, ShipmentTracker, SubProductSet, XbsStuffingSet } from "./source/types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { governanceKpis, type GovernanceData } from "./governance";
 import { GATES, SITES, addImport, chainFor, openGates, type Gate, basketMap, setComtrasPosition, setReference } from "./repository";
@@ -92,8 +94,10 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
   const [contractJournal, setContractJournal] = useState<ContractJournal | undefined>(data.contractJournal);
   const [shipments, setShipments] = useState<ShipmentTracker | undefined>(data.shipments);
   const [xbsStuffing, setXbsStuffing] = useState<XbsStuffingSet | undefined>(data.xbsStuffing);
+  const [subProducts, setSubProducts] = useState<SubProductSet | undefined>(data.subProducts);
   const [directLots, setDirectLots] = useState<DirectLots | undefined>(data.directLots);
   const [reconItems, setReconItems] = useState<ReconItem[]>(data.reconItems ?? []);
+  const [comments, setComments] = useState<ThreadComment[]>(data.comments ?? []);
   const [allocation, setAllocation] = useState<AllocationData>(
     data.allocation ?? { profiles: [], runs: [], lastAreas: {}, rules: { homeArea: true, rotation: true, thirdPartyClearance: true }, people: [] },
   );
@@ -207,8 +211,15 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
     shipments,
     /** XBS stuffing dates (shipped reports) loaded for the active stock take; they correct the tracker's. */
     xbsStuffing,
+    /** The warehouse's sub-product registers loaded for the active stock take (book side of off-system stock). */
+    subProducts,
     /** Day limits of the afloat ageing buckets (setting AfloatAgeingDays), if set. */
     afloatAgeingDays: data.afloatAgeingDays,
+    /** Third-party ageing bucket edges and call-off limit (settings), if set. */
+    thirdPartyAgeingDays: data.thirdPartyAgeingDays,
+    thirdPartyCallOffDays: data.thirdPartyCallOffDays,
+    /** Days a sub-product may wait to be bulked or sold (setting SubProductAgeDays), if set. */
+    subProductAgeDays: data.subProductAgeDays,
     /** Trading's direct purchase lots loaded for the active stock take. */
     directLots,
     /** Whether counting is finished; Level 1 closes on its own (close-count.ts). */
@@ -455,6 +466,19 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
     },
 
     comtras,
+    comments,
+    /** Adds a comment to a thread (shown at once, saved in the background; never edited after). */
+    addComment(c: ThreadComment) {
+      const tmp = `tmp-${Date.now()}`;
+      setComments((xs) => [...xs, { ...c, id: tmp, by: me, at: stamp() }]);
+      source.addComment(c).then(
+        (id) => setComments((xs) => xs.map((x) => (x.id === tmp ? { ...x, id } : x))),
+        (e: unknown) => {
+          setComments((xs) => xs.filter((x) => x.id !== tmp));
+          flash(`Couldn't save the comment. ${e instanceof Error ? e.message : ""}`.trim());
+        },
+      );
+    },
     reconItems,
     /** Adds a line to the BRIC bridge (shown at once, saved in the background). */
     addReconItem(i: ReconItem) {
@@ -560,6 +584,61 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
         .catch((e: unknown) => {
           console.error(e);
           flash(`Couldn't load the XBS stuffing dates. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /** Reads the old Physical Count app's CSV against the active stock take (nothing written). */
+    planCounts(csvText: string, opt: ImportOptions): Promise<CountPreview | undefined> {
+      if (!source.planCounts) {
+        flash("The physical count is loaded into Dataverse; this preview has nowhere to keep it.");
+        return Promise.resolve(undefined);
+      }
+      return source.planCounts(csvText, opt).catch((e: unknown) => {
+        console.error(e);
+        flash(`Couldn't read the count file. ${e instanceof Error ? e.message : ""}`.trim());
+        return undefined;
+      });
+    },
+    /** Loads the count into the active stock take, then reloads so Level 1 runs on it; resolves true once saved. */
+    importCounts(plan: CountImportPlan, file: string, onProgress?: (done: number, total: number) => void) {
+      if (!source.importCounts) {
+        flash("The physical count is loaded into Dataverse; this preview has nowhere to keep it.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importCounts(plan, file, onProgress)
+        .then(() => {
+          log("Physical count", file, `Loaded from the old app: ${plan.lines.length} lines on ${plan.stacks.length} stacks`);
+          flash(`Count loaded: ${plan.lines.length} lines. Level 1 is running on it.`);
+          window.setTimeout(reload, 1200);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the count. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /** Stores a sub-product register for the active stock take; resolves true once saved. */
+    importSubProducts(upload: SubProductUpload, onProgress?: (done: number, total: number) => void) {
+      if (!source.importSubProducts) {
+        flash("Sub-product registers are loaded into Dataverse; this preview has nowhere to keep them.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importSubProducts(upload, onProgress)
+        .then(() => {
+          setSubProducts((had) => {
+            const keep = (had?.rows ?? []).filter((r) => (upload.register === "Franchise inventory") !== r.kind.startsWith("Franchise"));
+            return { files: { ...had?.files, [upload.register]: upload.file }, rows: [...keep, ...upload.rows] };
+          });
+          log("Sub-products", upload.file, `Loaded the ${upload.register.toLowerCase()}: ${upload.rows.length} rows`);
+          flash(`${upload.register} loaded: ${upload.rows.length} rows.`);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the ${upload.register.toLowerCase()}. ${e instanceof Error ? e.message : ""}`.trim());
           return false;
         });
     },

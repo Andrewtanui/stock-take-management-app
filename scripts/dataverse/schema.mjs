@@ -43,7 +43,9 @@ export const CHOICES = {
   stk_primarybasket: ["Primary basket", ["Plus", "FAQ", "Grinder"]],
   stk_stockcategory: [
     "Stock category",
-    ["Current stock", "Processing stock", "Work in progress", "Sweepings", "Loose bags", "Disputed stock", "Direct purchase (not in XBS)", "Ex-office stock"],
+    // "Franchise" (added 29 Oct 2026): franchise gains (KDI) and gains bulked (KIB), one of the
+    // warehouse's sub-products with ex-office and sweepings. Appended, so existing values stay.
+    ["Current stock", "Processing stock", "Work in progress", "Sweepings", "Loose bags", "Disputed stock", "Direct purchase (not in XBS)", "Ex-office stock", "Franchise"],
   ],
   stk_countreason: [
     "Counter's reason",
@@ -60,7 +62,8 @@ export const CHOICES = {
   ],
   stk_rootcause: ["Root cause", [...ROOT_CAUSES, ...NEW_CAUSES]],
   stk_variancestate: ["Variance state", ["Open", "Recount sent", "Accepted", "Exception raised"]],
-  stk_exceptionkind: ["Exception kind", [...ROOT_CAUSES, "Master data", "Third party", "Direct purchase", ...NEW_CAUSES]],
+  // "Sub-products" (added 29 Oct 2026): ex-office, sweepings and franchise checks. Appended.
+  stk_exceptionkind: ["Exception kind", [...ROOT_CAUSES, "Master data", "Third party", "Direct purchase", ...NEW_CAUSES, "Sub-products"]],
   // "IBKY engine" (added 25 Oct 2026): checks raised by Jones's engine (mass balance, master data, ...).
   stk_exceptionsource: ["Exception source", ["Count", "Import", "Pre-count check", "Reconciliation", "IBKY engine"]],
   stk_exceptionstatus: ["Exception status", ["Open", "In progress", "Escalated", "Closed"]],
@@ -152,6 +155,24 @@ export const TABLES = [
       ["stk_site", "Warehouse", "stk_site", true],
     ],
     keys: [["stk_import", "stk_rownumber"]],
+  },
+  // XBS zones (added 2 Nov 2026): XBS's "Zone" report, every location of every warehouse, active or
+  // not and with or without stock - the location master. Ibero Export Warehouse rows A-G x bays 1-14,
+  // Ibero Mill Export rows A-J x bays 15-24 (new building, no stock yet), zones 1-18; third parties
+  // only TEMP-0-0. One full copy per report (keyed by its time); the apps read the latest. Locked.
+  {
+    name: "stk_zone", display: "XBS zone", plural: "XBS zones", own: "org", primary: ["Zone", 40],
+    cols: [
+      ["stk_warehouse", "XBS warehouse", s(100)],
+      ["stk_isdefault", "Default zone", bool()],
+      ["stk_isactive", "Active", bool()],
+      ["stk_snapshotat", "XBS snapshot at", dt()],
+      ["stk_source", "Source file", s(200)],
+      // "<yyyymmddhhmm>|<XBS warehouse>|<zone>": one row per zone per report.
+      ["stk_key", "Key", s(160)],
+    ],
+    lookups: [["stk_site", "Warehouse", "stk_site"]],
+    keys: [["stk_key"]],
   },
   {
     name: "stk_comtrasposition", display: "Comtras position", plural: "Comtras positions", own: "org", primary: ["Name", 100],
@@ -272,6 +293,32 @@ export const TABLES = [
       ["stk_bags", "Bags (60 kg)", dec(2)],
       ["stk_lots", "Lots", int()],
       // "contract|SI|date": short enough for an alternate key (the name column is not).
+      ["stk_key", "Key", s(60)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_key"]],
+  },
+  // Sub-product registers (added 29 Oct 2026): the warehouse's sub-products report (ex-office and clean
+  // sweepings) and franchise inventory (gains per KDI, bulked KIB lots), one copy per stock take - the
+  // book side of Ibero's off-system stock, Finance's "Subproducts" line. Never changed (locked).
+  {
+    name: "stk_subproduct", display: "Sub-product register row", plural: "Sub-product register rows", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_source", "Source file", s(200)],
+      ["stk_register", "Register", local("Sub-products report", "Franchise inventory")],
+      ["stk_kind", "Kind", local("Ex-office sweepings", "Clean sweepings", "Franchise gains", "Franchise bulked")],
+      ["stk_bookedon", "Booked on", date()],
+      ["stk_ref", "KDI / KIB no. or type", s(30)],
+      ["stk_contract", "Contract", s(20)],
+      ["stk_quality", "Quality", s(60)],
+      ["stk_bags", "Bags", int()],
+      ["stk_pockets", "Pockets (kg)", int()],
+      ["stk_kg", "Kg", dec(2)],
+      ["stk_location", "Location", s(30)],
+      ["stk_status", "Status", s(100)],
+      ["stk_sheet", "Sheet", s(60)],
+      ["stk_rownumber", "Row", int()],
+      // "<R|F>|<sheet>|<row>": short enough for an alternate key.
       ["stk_key", "Key", s(60)],
     ],
     lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
@@ -457,6 +504,9 @@ export const TABLES = [
       ["stk_nothinghere", "Nothing to count", bool()],
       // The counter finished a third-party site: every XBS lot there that wasn't counted counts as 0.
       ["stk_sitefinished", "Site finished", bool()],
+      // A third-party site not counted on purpose (too little to count; the comment says why): no
+      // variances there, the XBS figure stands, and it doesn't hold up the count close (added 4 Nov 2026).
+      ["stk_notcounted", "Not counted (XBS figure stands)", bool()],
     ],
     lookups: [
       ["stk_stocktake", "Stock take", "stk_stocktake", true],
@@ -563,6 +613,20 @@ export const TABLES = [
       ["stk_import", "XBS import", "stk_xbsimport"],
     ],
     keys: [["stk_rulekey"]],
+  },
+  // Comment threads (added 29 Oct 2026, pain point L2): who explained what on an exception or a
+  // variance, from any department. Append-only - nobody edits or deletes a comment (locked).
+  {
+    name: "stk_comment", display: "Comment", plural: "Comments", own: "user", primary: ["Name", 100],
+    cols: [
+      ["stk_text", "Comment", memo(2000)],
+      ["stk_department", "Department", choice("stk_department")],
+    ],
+    lookups: [
+      ["stk_stocktake", "Stock take", "stk_stocktake"],
+      ["stk_exception", "Exception", "stk_exception"],
+      ["stk_variance", "Variance", "stk_variance"],
+    ],
   },
   {
     name: "stk_signoff", display: "Sign-off", plural: "Sign-offs", own: "org", primary: ["Name", 60],

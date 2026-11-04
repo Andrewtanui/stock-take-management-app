@@ -5,6 +5,8 @@ import { basketLines, bricBridge, threeWay, type ReconInput, type ReconRow } fro
 import BricBridge from "./BricBridge";
 import BricContracts from "./BricContracts";
 import AfloatPanel from "./AfloatPanel";
+import XbsCorrections from "./XbsCorrections";
+import SubProductsPanel from "./SubProductsPanel";
 import { TARGET_PCT } from "../data/repository";
 import { useStore } from "../data/store";
 import { Chip, Code, Diff, PageHead, n, signed } from "../ui/kit";
@@ -155,6 +157,8 @@ export default function Reconciliation() {
       <BricBridge input={input} />
       <BricContracts />
       <AfloatPanel />
+      <SubProductsPanel />
+      <XbsCorrections />
 
       <p className="muted small">
         Physical comes from submitted count lines (a recount replaces the first count). XBS is the snapshot the stock take was set up from, Warehouse plus Blocked for

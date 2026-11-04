@@ -14,6 +14,7 @@ const READ_REFERENCE = {
   stk_setting: "R",
   stk_xbsimport: "R",
   stk_xbsline: "R",
+  stk_zone: "R", // location master (counters check locations against it)
   stk_basketmap: "R",
   stk_outturnmap: "R",
   stk_stocktake: "R",
@@ -26,6 +27,7 @@ const READ_ALL_MGMT = {
   stk_shipment: "R",
   stk_directlot: "R",
   stk_xbsstuffing: "R",
+  stk_subproduct: "R",
   stk_mappingchange: "R",
   stk_assignment: "R",
   stk_countsheet: "R",
@@ -34,6 +36,7 @@ const READ_ALL_MGMT = {
   stk_recount: "R",
   stk_variance: "R",
   stk_exception: "R",
+  stk_comment: "R",
   stk_signoff: "R",
   stk_directpurchase: "R",
   stk_issue: "R",
@@ -76,6 +79,7 @@ export const ROLES = [
       stk_recount: "CRWA",
       stk_variance: "CRW",
       stk_exception: "CRWA",
+      stk_comment: "CR", // comment threads: add, never edit or delete
       stk_signoff: "CR",
       stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
       stk_mappingchange: { G: "R", B: "CW" },
@@ -94,6 +98,7 @@ export const ROLES = [
       stk_recount: "CRWA",
       stk_variance: "RW",
       stk_exception: "CRWA",
+      stk_comment: "CR", // comment threads: add, never edit or delete
       stk_signoff: "CR",
       stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
     },
@@ -106,6 +111,7 @@ export const ROLES = [
       ...READ_ALL_MGMT,
       stk_directpurchase: "CRW",
       stk_exception: "CRWA",
+      stk_comment: "CR", // comment threads: add, never edit or delete
       stk_mappingchange: { G: "R", B: "CW" },
       stk_signoff: "CR",
       stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
@@ -122,6 +128,7 @@ export const ROLES = [
       stk_outturnmap: "CRW",
       stk_variance: "RW",
       stk_exception: "CRWA",
+      stk_comment: "CR", // comment threads: add, never edit or delete
       stk_signoff: "CR",
       stk_kpisnapshot: "CRW", // the Hub refreshes governance KPIs for whoever has it open; frozen at Finance sign-off
       stk_stocktake: "RW", // records who prepared the pack
@@ -143,16 +150,18 @@ export const ROLES = [
   },
   {
     name: "STK Importer",
-    about: "Loads XBS, Comtras, shipment tracker, XBS stuffing and direct purchase snapshots. Create-only on the locked tables — no role can edit or delete them.",
+    about: "Loads XBS (stock and zones), Comtras, shipment tracker, XBS stuffing, sub-product register and direct purchase snapshots. Create-only on the locked tables — no role can edit or delete them.",
     tables: {
       stk_site: "R",
       stk_xbsimport: "CRW", // header status: Validating → Imported / Failed / Superseded
       stk_xbsline: "CR",
+      stk_zone: "CR",
       stk_comtrasposition: "CR",
       stk_contractinvoice: "CR",
       stk_shipment: "CR",
       stk_directlot: "CR",
       stk_xbsstuffing: "CR",
+      stk_subproduct: "CR",
     },
   },
   {
@@ -184,4 +193,4 @@ export const ROLES = [
 ];
 
 /** Tables whose rows must never be changed once created. Checked by create-roles.mjs. */
-export const LOCKED = ["stk_xbsline", "stk_comtrasposition", "stk_contractinvoice", "stk_shipment", "stk_directlot", "stk_xbsstuffing"];
+export const LOCKED = ["stk_xbsline", "stk_zone", "stk_comtrasposition", "stk_contractinvoice", "stk_shipment", "stk_directlot", "stk_xbsstuffing", "stk_comment", "stk_subproduct"];

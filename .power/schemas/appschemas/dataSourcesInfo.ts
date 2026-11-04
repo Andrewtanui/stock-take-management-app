@@ -80,6 +80,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "stk_comments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_commentid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "stk_comtraspositions": {
     "tableId": "",
     "version": "",
@@ -231,6 +238,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_stocktakeid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_subproducts": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_subproductid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

@@ -7,6 +7,7 @@ import ComtrasImport from "./ComtrasImport";
 import ContractsImport from "./ContractsImport";
 import ShipmentsImport from "./ShipmentsImport";
 import XbsStuffingImport from "./XbsStuffingImport";
+import SubProductsImport from "./SubProductsImport";
 import DirectImport from "./DirectImport";
 import { Chip, Code, PageHead, ReadOnly, type Tone } from "../ui/kit";
 
@@ -170,6 +171,7 @@ export default function Import() {
       <ContractsImport allowed={allowed} />
       <ShipmentsImport allowed={allowed} />
       <XbsStuffingImport allowed={allowed} />
+      <SubProductsImport allowed={allowed} />
       <DirectImport allowed={allowed} />
 
       <section className="block">

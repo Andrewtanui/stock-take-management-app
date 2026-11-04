@@ -30,6 +30,7 @@ export interface Stk_stacksBase {
   "stk_countsheet@odata.bind"?: string;
   stk_landmark?: string;
   stk_name: string;
+  stk_notcounted?: boolean;
   stk_nothinghere?: boolean;
   "stk_site@odata.bind": string;
   stk_sitefinished?: boolean;
@@ -47,6 +48,7 @@ export interface Stk_stacks extends Stk_stacksBase {
   modifiedon?: string;
   statecodename?: string;
   statuscodename?: string;
+  stk_notcountedname?: string;
   stk_nothingherename?: string;
   stk_sitefinishedname?: string;
   stk_statusname?: string;

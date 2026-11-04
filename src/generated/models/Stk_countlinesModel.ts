@@ -20,7 +20,8 @@ export const Stk_countlinesstk_category = {
   614500004: 'Loose bags',
   614500005: 'Disputed stock',
   614500006: 'Direct purchase (not in XBS)',
-  614500007: 'Ex-office stock'
+  614500007: 'Ex-office stock',
+  614500008: 'Franchise'
 } as const;
 export type Stk_countlinesstk_category = keyof typeof Stk_countlinesstk_category;
 export const Stk_countlinesstk_reason = {

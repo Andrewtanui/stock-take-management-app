@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { PowerProvider } from "./PowerProvider";
 import { StoreProvider } from "./data/store";
 import App from "./App";
-import "@fontsource-variable/bricolage-grotesque";
+import "@fontsource-variable/noto-sans";
 import "./theme.css";
 import "./styles.css";
 

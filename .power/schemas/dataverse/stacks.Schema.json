@@ -301,6 +301,38 @@
           "required": true,
           "maxLength": 60
         },
+        "stk_notcounted": {
+          "type": "string",
+          "title": "Not counted (XBS figure stands)",
+          "x-ms-dataverse-attribute": "stk_notcounted",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "stk_notcounted",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "f167f947-d1d7-f111-84e7-7ced8d4931c7",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Not counted (XBS figure stands)",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "stk_notcountedname": {
+          "type": "string",
+          "title": "stk_notcountedname",
+          "x-ms-dataverse-attribute": "stk_notcountedname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "stk_notcountedName",
+          "x-ms-dataverse-attribute-of": "stk_notcounted",
+          "x-ms-read-only": true
+        },
         "stk_nothinghere": {
           "type": "string",
           "title": "Nothing to count",

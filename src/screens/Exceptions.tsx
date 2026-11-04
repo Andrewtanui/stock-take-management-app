@@ -5,6 +5,7 @@ import { useStore } from "../data/store";
 import type { Exception, Priority } from "../data/types";
 import { priorityFor } from "../data/auto-decide";
 import { Chip, PageHead, Tabs, n, type Tone } from "../ui/kit";
+import { Thread } from "../ui/Thread";
 
 type F = "open" | "overdue" | "escalated" | "closed" | "all";
 const STATUS_TONE: Record<Exception["status"], Tone> = { Open: "warn", "In progress": "info", Escalated: "crit", Closed: "ok" };
@@ -214,6 +215,12 @@ export default function Exceptions() {
                 </button>
               </>
             )}
+            {ex.resolution && ex.status === "Closed" && (
+              <p className="small">
+                <span className="field-label">How it was fixed</span> {ex.resolution}
+              </p>
+            )}
+            <Thread key={ex.id} on="Exception" target={ex.id} />
           </section>
         )}
       </div>

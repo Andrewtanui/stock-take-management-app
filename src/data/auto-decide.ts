@@ -184,9 +184,10 @@ export function planAutoDecisions(
     if (v.state !== "recount" || done.has(v.id)) continue;
     const r = rounds.get(v.key);
     const order = r ? [...r.keys()].sort((a, b) => a - b) : [];
-    if (order.length < 2 || order[order.length - 1] === 0) continue; // recount not in yet
+    if (!order.length || order[order.length - 1] === 0) continue; // recount not in yet
     const latest = r!.get(order[order.length - 1])!;
-    const before = r!.get(order[order.length - 2])!;
+    // Only recount lines: the first count found nothing here (a lot in XBS, not counted), so it was 0.
+    const before = order.length > 1 ? r!.get(order[order.length - 2])! : 0;
     if (latest === v.expectedUnits) continue; // matched: syncVariances accepts it
     if (latest === before)
       add({ id: v.id, act: "exception", cause: v.cause, rule: "Recount confirmed", dept: thirdParty.has(v.site) ? "Logistics" : "Operations",

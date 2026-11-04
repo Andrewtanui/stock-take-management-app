@@ -9,6 +9,8 @@
 //   errors. Aug: 773.21, 1,719.78 (Finance 1,663.57 + Maxa 23.55 + broker 32.67), 29.57, 16.70;
 // - Kenyan longs: the P526 Kenya "Longs" lines less the direct-sale item, which BRIC holds as longs
 //   (Aug 2,631.07 - 773.21 = 1,857.86, Finance 1,858). Sep: Finance 1,335 from 1,346.93 - to confirm.
+// - sub-products (subproducts.ts): ex-office and clean sweepings and franchise, Ibero stock in neither
+//   XBS nor the count's physical - the warehouse registers' book at the count. Sep: 427.97 (Finance 428).
 // The franchise is what is left; Finance types it.
 
 import { AFLOAT_DEFAULT, afloatBags, afloatShipments, type AfloatGroup } from "./afloat";
@@ -17,7 +19,9 @@ import type { ContractLine } from "./contracts-parse";
 import type { ShipmentLine } from "./shipments-parse";
 import type { XbsStuffing } from "./xbs-shipped-parse";
 import { countItems, type CountItemKind } from "./recon-items";
-import type { ReconItem, Site, Variance, XbsLine } from "./types";
+import { compareSubProducts } from "./subproducts";
+import type { SubProductRow } from "./subproducts-parse";
+import type { CountRow, ReconItem, Site, Variance, XbsLine } from "./types";
 
 export interface Proposal {
   /**
@@ -51,6 +55,9 @@ export interface ProposalInput {
   lines: XbsLine[];
   sites: Site[];
   items: ReconItem[];
+  /** The warehouse's sub-product registers and the count lines (other stock), for the sub-products line. */
+  subProducts?: SubProductRow[];
+  counts?: CountRow[];
   /** Finance's afloat rule; until she confirms it, the panel's defaults. */
   afloat?: { groups: AfloatGroup[]; months: number };
 }
@@ -58,6 +65,7 @@ export interface ProposalInput {
 export const LABELS = {
   afloat: "Stuffed coffee, afloat (tracker + 537)",
   longs: "Kenyan longs (P526)",
+  subProducts: "Sub-products (off system)",
 };
 
 /** Typed items that look like the same item, by Finance's own words for them. */
@@ -113,6 +121,24 @@ export function bridgeProposals(p: ProposalInput): Proposal[] {
       detail: `Contracts ${[...new Set(longs.map((l) => l.contract))].slice(0, 8).join(", ")}${longs.length > 8 ? "…" : ""}.`,
       onBridge: has(LABELS.longs),
       similar: alike((i) => i.label !== LABELS.longs && /\blongs?\b/i.test(i.label)),
+    });
+  }
+
+  // Sub-products: off-system stock at Ibero, in neither the physical nor XBS column, so both.
+  const sp = compareSubProducts(p.subProducts ?? [], p.counts ?? [], p.cutOff);
+  if (sp.hasBook || sp.counted > 0) {
+    const bags = r2(sp.hasBook ? sp.book : sp.counted);
+    out.push({
+      label: LABELS.subProducts,
+      kind: "Reconciling item",
+      bags,
+      inXbs: true,
+      source: sp.hasBook
+        ? `Warehouse registers (sub-products report, franchise inventory) to the count: ${r2(sp.book)} bags; counted ${r2(sp.counted)}.`
+        : `Counted as other stock (no registers loaded): ${r2(sp.counted)} bags.`,
+      detail: sp.kinds.filter((k) => k.book || k.counted).map((k) => `${k.kind} ${r2(sp.hasBook ? k.book : k.counted)}`).join(" · "),
+      onBridge: has(LABELS.subProducts),
+      similar: alike((i) => i.label !== LABELS.subProducts && /sub.?products?|sweepings|ex.?office/i.test(i.label)),
     });
   }
 

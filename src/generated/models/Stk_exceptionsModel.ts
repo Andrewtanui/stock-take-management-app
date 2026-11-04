@@ -44,7 +44,8 @@ export const Stk_exceptionsstk_kind = {
   614500012: 'Direct purchase',
   614500013: 'Partial delivery: rest still at third party',
   614500014: 'Weight loss: claim from warehouse',
-  614500015: 'Posting timing / late posting'
+  614500015: 'Posting timing / late posting',
+  614500016: 'Sub-products'
 } as const;
 export type Stk_exceptionsstk_kind = keyof typeof Stk_exceptionsstk_kind;
 export const Stk_exceptionsstk_priority = {

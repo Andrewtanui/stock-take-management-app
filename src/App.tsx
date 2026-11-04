@@ -4,14 +4,17 @@ import {
   BarChart3,
   ClipboardCheck,
   FileUp,
+  FileInput,
   Gauge,
   GitCompareArrows,
+  Grid3x3,
   LayoutDashboard,
   ListChecks,
   Menu,
   MessageSquareWarning,
   Network,
   PenLine,
+  PieChart,
   Scale,
   Settings,
   ShoppingBasket,
@@ -26,6 +29,7 @@ import Overview from "./screens/Overview";
 import StockTakes from "./screens/StockTakes";
 import Allocate from "./screens/Allocate";
 import Import from "./screens/Import";
+import CountImport from "./screens/CountImport";
 import Checks from "./screens/Checks";
 import LiveBoard from "./screens/LiveBoard";
 import Approvals from "./screens/Approvals";
@@ -39,6 +43,8 @@ import DirectPurchases from "./screens/DirectPurchases";
 import Issues from "./screens/Issues";
 import Setup from "./screens/Setup";
 import Reports from "./screens/Reports";
+import Dashboards from "./screens/Dashboards";
+import Locations from "./screens/Locations";
 import { Logo } from "./ui/Logo";
 import Assistant from "./ui/Assistant";
 import { shortType } from "./data/scope";
@@ -48,6 +54,7 @@ export type Page =
   | "stocktakes"
   | "allocate"
   | "import"
+  | "countimport"
   | "checks"
   | "live"
   | "approvals"
@@ -60,7 +67,9 @@ export type Page =
   | "direct"
   | "issues"
   | "setup"
-  | "reports";
+  | "reports"
+  | "dashboards"
+  | "locations";
 
 const Nav = createContext<(p: Page) => void>(() => {});
 export const useNav = () => useContext(Nav);
@@ -90,6 +99,7 @@ export default function App() {
         { id: "stocktakes", label: "Stock takes", icon: ClipboardCheck },
         { id: "allocate", label: "Allocate counters", icon: Shuffle },
         { id: "import", label: "XBS import", icon: FileUp },
+        { id: "countimport", label: "Physical count import", icon: FileInput },
         { id: "checks", label: "Pre-count checks", icon: ListChecks },
         { id: "live", label: "Count day live", icon: Gauge },
         { id: "approvals", label: "Count approval", icon: ClipboardCheck, badge: pendingSheets },
@@ -106,6 +116,14 @@ export default function App() {
       ],
     },
     {
+      label: "Reports",
+      items: [
+        { id: "dashboards", label: "Dashboards", icon: PieChart },
+        { id: "reports", label: "Reports", icon: BarChart3 },
+        { id: "locations", label: "Locations", icon: Grid3x3 },
+      ],
+    },
+    {
       label: "Master data",
       items: [
         { id: "mapping", label: "Mapping", icon: Network, badge: pendingMaps },
@@ -116,7 +134,6 @@ export default function App() {
       label: "Support",
       items: [
         { id: "issues", label: "Problem reports", icon: MessageSquareWarning, badge: openIssues },
-        { id: "reports", label: "Reports", icon: BarChart3 },
       ],
     },
     { label: "Admin", items: [{ id: "setup", label: "Set-up & audit", icon: Settings }] },
@@ -127,6 +144,7 @@ export default function App() {
     stocktakes: <StockTakes />,
     allocate: <Allocate />,
     import: <Import />,
+    countimport: <CountImport />,
     checks: <Checks />,
     live: <LiveBoard />,
     approvals: <Approvals />,
@@ -140,6 +158,8 @@ export default function App() {
     issues: <Issues />,
     setup: <Setup />,
     reports: <Reports />,
+    dashboards: <Dashboards />,
+    locations: <Locations />,
   };
 
   return (

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { History, RotateCcw } from "lucide-react";
 import { GRADES, PERMISSIONS, ROLES, STOCK_TAKE_GROUPS, USERS, can } from "../data/repository";
 import { useStore } from "../data/store";
 import { Chip, PageHead, ReadOnly, Tabs } from "../ui/kit";
+import { hasLayout, layoutOf } from "../shared/sections";
 
 type T = "warehouses" | "locations" | "groups" | "grades" | "users" | "audit";
 
@@ -20,7 +21,7 @@ export default function Setup() {
         onChange={setTab}
         items={[
           ["warehouses", "Warehouses"],
-          ["locations", "Locations & zones"],
+          ["locations", "Locations"],
           ["groups", "Stock take groups"],
           ["grades", "Grades"],
           ["users", "Users & roles"],
@@ -48,7 +49,7 @@ export default function Setup() {
                     <td>{s.name}</td>
                     <td className="code">{s.code}</td>
                     <td>{s.thirdParty ? <Chip>Third party</Chip> : <Chip tone="info">Own</Chip>}</td>
-                    <td className="muted">{s.thirdParty ? "Recorded by counters on the day" : "From XBS (rows A–G, bays 1–14)"}</td>
+                    <td className="muted">{s.thirdParty ? "Recorded by counters on the day" : hasLayout(s.code) ? `From XBS (rows ${layoutOf(s.code).rows[0]}–${layoutOf(s.code).rows.slice(-1)}, bays ${layoutOf(s.code).bayFrom}–${layoutOf(s.code).bayTo})` : "From XBS"}</td>
                     <td>
                       <label className="switch">
                         <input type="checkbox" checked={s.manualEntry} disabled={!canConfig} onChange={(e) => store.setManualEntry(s.code, e.target.checked)} />
@@ -67,15 +68,32 @@ export default function Setup() {
       {tab === "locations" && (
         <section className="panel">
           {!canConfig && <ReadOnly who="IT Admin or Operations Admin" />}
-          <h2 className="h3">Ibero Export Warehouse</h2>
-          <dl className="kv">
-            <dt>Rows</dt>
-            <dd>A–G</dd>
-            <dt>Bays</dt>
-            <dd>1–14</dd>
-            <dt>Levels</dt>
-            <dd>From XBS, e.g. D-05-1 = row D, bay 5, level 1</dd>
-          </dl>
+          {store.sites.filter((s) => hasLayout(s.code)).map((s) => {
+            const l = layoutOf(s.code);
+            const bay = String(l.bayFrom + 4).padStart(2, "0");
+            return (
+              <Fragment key={s.code}>
+                <h2 className="h3">{s.name}</h2>
+                <dl className="kv">
+                  <dt>Rows</dt>
+                  <dd>
+                    {l.rows[0]}–{l.rows.slice(-1)}, and the stacks between two neighbouring rows
+                  </dd>
+                  <dt>Bays</dt>
+                  <dd>
+                    {l.bayFrom}–{l.bayTo}
+                  </dd>
+                  <dt>Zones</dt>
+                  <dd>
+                    1–{l.zones} per bay (stack positions), e.g. location D-{bay}-1 = row D, bay {+bay}, zone 1
+                  </dd>
+                </dl>
+              </Fragment>
+            );
+          })}
+          <p className="hint">
+            From XBS's Zone report (every location of every warehouse). Bay numbers don't overlap between the two buildings, so a location code says which one it is in.
+          </p>
           <h3 className="field-label">Location formats</h3>
           <div className="table-wrap">
             <table className="table">

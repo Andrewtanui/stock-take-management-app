@@ -49,7 +49,7 @@ export function saleOf(batch: string) {
   return batch.match(/^\d{4}\/\d{4}-(DS\d+|\d+)-/)?.[1];
 }
 /** Crop year and auction sale as one sortable number: "2025/2026-37-…" -> 2025037. */
-const saleRank = (batch: string) => {
+export const saleRank = (batch: string) => {
   const m = batch.match(/^(\d{4})\/\d{4}-(\d+)-/);
   return m ? Number(m[1]) * 1000 + Number(m[2]) : undefined;
 };

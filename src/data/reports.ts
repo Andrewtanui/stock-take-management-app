@@ -7,6 +7,7 @@
 // Ibero's system stock is XBS Warehouse + Blocked for Processing, as on the
 // September month-end workbook.
 
+import { readSignoffComment } from "./signoff-record";
 import { IMPORTS, SITES, allLines, basketMap, site } from "./repository";
 import type { Gate } from "./repository";
 import type { Signature } from "./source";
@@ -293,7 +294,7 @@ function locationSummary(input: ReportInput): ReportOut {
   const rows: Row[] = [...keys].map((k) => {
     const [wh, stack] = k.split("|") as [SiteCode, string];
     const here = counts.filter((c) => c.site === wh && c.stack === stack);
-    const xbsLots = wh === "IBR" ? new Set(allLines().filter((l) => l.wh === wh && l.z === stack).map((l) => l.b)).size : undefined;
+    const xbsLots = !SITES.find((s) => s.code === wh)?.thirdParty ? new Set(allLines().filter((l) => l.wh === wh && l.z === stack).map((l) => l.b)).size : undefined;
     return {
       wh: short(wh),
       stack,
@@ -441,8 +442,11 @@ function signOffPack(input: ReportInput): ReportOut {
   // Laid out like Finance's signature block: tier, name, job title, date signed.
   const gates: Row[] = input.chain.map((c) => {
     const s = input.signatures[c.gate];
-    return { tier: `${c.tier} by`, by: s?.by ?? c.signer, gate: c.gate, signs: c.signs, at: s?.at ?? "Not signed", comment: s?.comment ?? "" };
+    const rec = readSignoffComment(s?.comment);
+    return { tier: `${c.tier} by`, by: s?.by ?? c.signer, gate: c.gate, signs: c.signs, at: s?.at ?? "Not signed", comment: [rec.lead, rec.rest].filter(Boolean).join(" ") };
   });
+  // The actions each signer left ("Owner: action" lines in the comment), in signing order.
+  const actions: Row[] = input.chain.flatMap((c) => readSignoffComment(input.signatures[c.gate]?.comment).actions.map((a) => ({ gate: c.gate, owner: a.owner, action: a.text })));
   // Reconciliation by primary basket, physical vs XBS at counted warehouses.
   const counts = currentCounts(input.counts).filter((c) => !c.other);
   const inScope = comparable(input, counts);
@@ -471,6 +475,7 @@ function signOffPack(input: ReportInput): ReportOut {
     note: `${input.stockTake}: sign-off gates, reconciliation by primary basket for the stock counted so far, and every variance.`,
     tables: [
       { title: "Sign-off", columns: [{ key: "tier", label: "" }, { key: "by", label: "Name" }, { key: "gate", label: "Job title" }, { key: "signs", label: "Certifies" }, { key: "at", label: "Signed" }, { key: "comment", label: "Comment" }], rows: gates },
+      ...(actions.length ? [{ title: "Actions from the sign-off", columns: [{ key: "gate", label: "Raised by" }, { key: "owner", label: "Owner" }, { key: "action", label: "Action" }], rows: actions }] : []),
       {
         title: "Reconciliation by primary basket (eq60, counted stock)",
         columns: [{ key: "basket", label: "Primary basket" }, { key: "xbs", label: "XBS eq60", kind: "num1" }, { key: "phys", label: "Physical eq60", kind: "num1" }, { key: "diff", label: "Difference eq60", kind: "num1" }],

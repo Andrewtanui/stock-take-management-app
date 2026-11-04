@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const root = new URL("..", import.meta.url);
 const out = await build({
-  stdin: { contents: `export * from "./src/data/allocate"; export * from "./src/shared/sections"; export * from "./src/data/variance-rules"; export * from "./src/data/auto-decide"; export * from "./src/data/close-count";`, resolveDir: fileURLToPath(root), loader: "ts" },
+  stdin: { contents: `export * from "./src/data/allocate"; export * from "./src/shared/sections"; export * from "./src/data/variance-rules"; export * from "./src/data/auto-decide"; export * from "./src/data/close-count"; export * from "./src/data/count-import";`, resolveDir: fileURLToPath(root), loader: "ts" },
   bundle: true, format: "esm", platform: "node", write: false,
 });
-const { allocate, buildAreas, zoneInSections, sectionList, parseZone, pickRecounter, draftVariances, sortSections, sectionsWords, planAutoDecisions, AUTO_DEFAULTS, closeCheck, l1Summary } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+const { allocate, buildAreas, zoneInSections, sectionList, parseZone, pickRecounter, draftVariances, sortSections, sectionsWords, planAutoDecisions, AUTO_DEFAULTS, closeCheck, l1Summary, planCountImport } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
 
 const snap = JSON.parse(readFileSync(new URL("../src/data/xbs-2026-03-02.json", import.meta.url), "utf8"));
 const lines = (Array.isArray(snap) ? snap : snap.lines ?? Object.values(snap).find(Array.isArray)).filter((l) => l.t === "W" || l.t === "B");
@@ -131,6 +131,10 @@ const finished = draftVariances(aglFacts, lines, [{ site: "AGL", stack: "Area 1"
 const withStock = agl.filter((b) => b !== one.b && lines.filter((l) => l.wh === "AGL" && l.b === b).some((l) => l.u > 0 || l.kg >= 1)).length;
 check(finished.length === withStock && finished.every((d) => d.countedUnits === 0 && /^Not found at AGL: William finished the site/.test(d.why) && d.cause !== "Unposted gate-out"),
   `a finished AGL judges every lot nobody counted (${finished.length} of ${withStock} with stock in XBS) as not found; the counted lot that matches isn't a variance`);
+// 9b. A third-party site not counted on purpose (too little to count): nothing judged, the XBS figure stands.
+const skipped = draftVariances([], lines, [{ site: "AGL", stack: "Whole site" }], thirdParty, siteName, [{ site: "AGL", stack: "Whole site", by: "Andrew", at: "10:00", reason: "Not counted: too little to count", notCounted: true }]);
+check(skipped.length === 0, "a third party not counted on purpose has no variances (XBS figure stands)");
+check(closeCheck({ iberoStacks: [], submittedStacks: new Set(), thirdPartySites: ["AGL"], closedSites: new Set(["AGL"]), openRecounts: 0, undecidedVariances: 0, countLines: 1, siteShort: (s) => s }).ready, "a third party not counted on purpose doesn't hold up the count close");
 const unfinished = draftVariances(aglFacts, lines, [{ site: "AGL", stack: "Area 1" }], thirdParty, siteName);
 check(unfinished.length === 0, "until the site is finished, lots nobody counted aren't judged");
 
@@ -170,6 +174,11 @@ check(unfinished.length === 0, "until the site is finished, lots nobody counted 
   check(act(planAutoDecisions(sent, [f(8), f(8, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "exception", "auto: recount repeats the first count - exception");
   check(act(planAutoDecisions(sent, [f(9), f(8, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "review", "auto: recount disagrees with the first count - back to the supervisor");
   check(!act(planAutoDecisions(sent, [f(8)], tp, AUTO_DEFAULTS), "rc"), "auto: recount not in yet - waits");
+  // A lot in XBS that the first count didn't find (no lines), recounted.
+  const none = [v("rc", { countedUnits: 0, countedKg: 0, state: "recount", decided: true })];
+  check(act(planAutoDecisions(none, [f(0, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "exception", "auto: not found, recount finds nothing either - exception");
+  check(act(planAutoDecisions(none, [f(3, "R-001")], tp, AUTO_DEFAULTS), "rc")?.act === "review", "auto: not found, recount finds some - back to the supervisor");
+  check(!act(planAutoDecisions(none, [], tp, AUTO_DEFAULTS), "rc"), "auto: not found, recount not in yet - waits");
 }
 
 // Level 1 closes on its own (close-count.ts).
@@ -192,6 +201,53 @@ check(unfinished.length === 0, "until the site is finished, lots nobody counted 
   );
   check(/>Accepted automatically<\/td><td[^>]*>479<\/td>/.test(text) && /High priority \(10 bags or more\)<\/td><td[^>]*>9<\/td>/.test(text), "close: summary variance and exception sections");
   check(l1Summary({ stockTake: "x", closedAt: new Date(), sites: [{ name: "A <b>bad</b> name", xbs: 1, physical: 1 }], variances: { total: 0, accepted: 0, acceptedAutomatically: 0, exception: 0 }, recountsDone: 0, exceptions: { High: 0, Medium: 0, Low: 0 } }).includes("A &lt;b&gt;bad&lt;/b&gt; name"), "close: names are escaped in the summary");
+}
+
+// Physical count import (count-import.ts): the old app's CSV.
+{
+  const sites = [
+    { code: "IBR", name: "Ibero Export Warehouse", shortName: "Ibero", thirdParty: false },
+    { code: "AGL", name: "AGL", shortName: "AGL", thirdParty: true },
+    { code: "KCCE", name: "Kenya Co-op Coffee Exporters", shortName: "KCCE", thirdParty: true },
+    { code: "KPCU", name: "New KPCU", shortName: "New KPCU", thirdParty: true },
+  ];
+  const lot = (id, outturn, grade, zone, site, kg) => ({ id, batch: id, outturn, grade, zone, site, bfp: false, kg });
+  const lots = [
+    lot("b1", "49MM0018", "AA", "A-01-1", "IBR", 600), lot("b2", "49MM0018", "AB", "A-01-1", "IBR", 1200),
+    lot("b3", "KDI6207", "BULK", "A-02-1", "IBR", 600), lot("b4", "47CL1001", "C", "C-03/04-1", "IBR", 1681),
+    lot("b5", "X1", "C", "C-04-1", "IBR", 60), lot("b6", "X2", "C", "C/D-03/04-1", "IBR", 60),
+    lot("b7", "43KF0015", "AB", "TEMP-0-0", "KCCE", 120), lot("b8", "K1", "AA", "TEMP-0-0", "KPCU", 300), lot("b9", "G1", "AA", "TEMP-0-0", "AGL", 600),
+  ];
+  const csv = [
+    "Outturn,Warehouse,Grade,Bags,Pockets,Units,Physical Weight,Location,Zone,Receive Location,Receive Zone,Created,Created By",
+    "49MM0018,IBERO EXPORT WAREHOUSE,AB,20,0,20,1200,A-01,1,,,Sept-30, 2026 4:00 PM,Ibero - Clerk - Ann",
+    "49MM0018,IBERO EXPORT WAREHOUSE,AA,10,0,10,600,A-01,1,,,11/02/2026 09:08,Ibero - Clerk - Ann",
+    "KDI6207,IBERO EXPORT WAREHOUSE,BULK,10,0,10,600,G-14,0,,,11/02/2026 09:10,Ibero - Clerk - Ann",
+    "47SL1007,IBERO EXPORT WAREHOUSE,C,27,61,28,1681,C-04,1,,,11/02/2026 09:20,Ibero - Clerk - Ann",
+    "X1,IBERO EXPORT WAREHOUSE,C,0,30,1,30,C-04,1,,,11/02/2026 09:21,Ibero - Clerk - Ann",
+    "X1,IBERO EXPORT WAREHOUSE,C,0,30,1,30,C-04,1,,,11/02/2026 09:22,Ibero - Clerk - Bob",
+    "43KF0015,KENYA CO-OPERATIVE COFFEE EXPORTERS,AB,2,0,2,120,,,,,11/02/2026 10:00,TP - Clerk - Cy",
+    "Q1,NOWHERE LTD,AA,1,0,1,60,A-01,1,,,11/02/2026 10:00,x - y - z",
+  ].join("\r\n");
+  const p = planCountImport(csv, "2026-10-31", sites, lots, { siteChoices: { KPCU: "notCounted" }, notCountedReason: "too little to count" });
+  const line = (o, g) => p.lines.find((l) => l.outturn === o && l.grade === g);
+  check(line("49MM0018", "AB")?.lot?.id === "b2" && line("49MM0018", "AA")?.lot?.id === "b1", "count import: each grade goes to its own lot of the outturn");
+  check(line("49MM0018", "AB")?.at === "2026-09-30T13:00:00.000Z" && line("49MM0018", "AA")?.at === "2026-11-02T06:08:00.000Z", "count import: both old-app date formats, Nairobi time");
+  check(line("KDI6207", "BULK")?.stack === "G-14-1" && line("KDI6207", "BULK").found && p.notes.some((n) => n.includes("zone 0")), "count import: zone 0 read as zone 1, with a note");
+  check(line("47SL1007", "C")?.stack === "C-04-1" && !line("47SL1007", "C").lot, "count import: a lot not in XBS goes on the XBS stack at its bay and zone (row before between-rows)");
+  check(line("X1", "C")?.rows.length === 2 && line("X1", "C").pocketBags === 2 && line("X1", "C").clerks.length === 2, "count import: the same lot on one stack is one line");
+  check(line("43KF0015", "AB")?.site === "KCCE" && line("43KF0015", "AB").stack === "Area 1", "count import: third party by the first word of XBS's name, one area per clerk");
+  check(p.errors.length === 1 && p.errors[0].includes("NOWHERE"), "count import: an unknown warehouse is an error (the load is refused)");
+  check(p.stacks.some((s) => s.site === "KCCE" && s.finished) && p.stacks.some((s) => s.site === "KPCU" && s.notCounted && s.comment.includes("too little")), "count import: counted third party finished; not-counted one marked with its reason");
+  check(p.sites.find((s) => s.site === "AGL")?.choice === "open" && !p.stacks.some((s) => s.site === "AGL"), "count import: a third party left out of the file stays open by default");
+  check(p.stacks.some((s) => s.name === "A-02-1" && s.empty) && p.stacks.some((s) => s.name === "C-03/04-1" && s.empty), "count import: Ibero XBS stacks nobody recorded are submitted empty");
+  let threw = false;
+  try {
+    planCountImport("a,b\n1,2", "2026-10-31", sites, lots);
+  } catch {
+    threw = true;
+  }
+  check(threw, "count import: a file that isn't the old app's export is refused");
 }
 
 console.log("\nPlan (seed " + plan.seed + "):");

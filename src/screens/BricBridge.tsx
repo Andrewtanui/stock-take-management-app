@@ -42,6 +42,8 @@ export default function BricBridge({ input }: { input: ReconInput }) {
     journal: store.contractJournal?.lines,
     shipments: store.shipments?.lines,
     xbsStuffing: store.xbsStuffing?.rows,
+    subProducts: store.subProducts?.rows,
+    counts: store.counts,
     variances: store.variances,
     lines: allLines(),
     sites: SITES,

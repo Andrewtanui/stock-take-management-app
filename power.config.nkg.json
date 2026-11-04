@@ -168,6 +168,21 @@
           "entitySetName": "stk_directlots",
           "logicalName": "stk_directlot",
           "isHidden": false
+        },
+        "comments": {
+          "entitySetName": "stk_comments",
+          "logicalName": "stk_comment",
+          "isHidden": false
+        },
+        "sub_productregisterrows": {
+          "entitySetName": "stk_subproducts",
+          "logicalName": "stk_subproduct",
+          "isHidden": false
+        },
+        "xbsstuffings": {
+          "entitySetName": "stk_xbsstuffings",
+          "logicalName": "stk_xbsstuffing",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

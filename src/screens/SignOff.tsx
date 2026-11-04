@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { ArrowRight, Check, Download, Mail, ShieldAlert } from "lucide-react";
 import { byWarehouse, netVariance } from "../data/recon";
+import { readSignoffComment } from "../data/signoff-record";
 import { TARGET_PCT, TODAY, openGates, sum, type GateDef } from "../data/repository";
 import { useStore } from "../data/store";
 import { Chip, Diff, PageHead, n, signed } from "../ui/kit";
@@ -155,18 +156,63 @@ export default function SignOff() {
         <p className="muted small">By grade, with Operations and Trading comments per line, in the PDF and Excel pack, which ends with the signature block above.</p>
       </section>
 
-      {chain.some((g) => store.signatures[g.gate]?.comment) && (
-        <section className="panel">
-          <h2 className="h3">Comments</h2>
-          <ul className="plain">
+      {chain.some((g) => store.signatures[g.gate]) && (
+        <section className="panel" aria-label="Sign-off record">
+          <div className="row-between">
+            <h2 className="h3">Sign-off record</h2>
+            <span className="muted small">
+              {chain.filter((g) => store.signatures[g.gate]).length} of {chain.length} signed
+            </span>
+          </div>
+          <ol className="sorec">
             {chain
-              .filter((g) => store.signatures[g.gate]?.comment)
-              .map((g) => (
-                <li key={g.gate}>
-                  <strong>{g.gate}:</strong> {store.signatures[g.gate]!.comment}
-                </li>
-              ))}
-          </ul>
+              .filter((g) => store.signatures[g.gate])
+              .map((g) => {
+                const s = store.signatures[g.gate]!;
+                const named = store.signerOf(g.gate);
+                const rec = readSignoffComment(s.comment);
+                const last = g === chain.at(-1);
+                return (
+                  <li key={g.gate} className="sorec-item">
+                    <div className="sorec-side">
+                      <span className="sorec-step">
+                        <span className="sorec-num">{g.step}</span>
+                        {g.tier === "Approved" && last ? "Certified" : g.tier}
+                      </span>
+                      <strong className="sorec-gate">{g.gate}</strong>
+                      <span className="small">
+                        <strong>Signed by {s.by}</strong>
+                        {s.by !== named.name && <span className="muted sorec-for">for {named.name}</span>}
+                      </span>
+                      <span className="muted small">{s.at}</span>
+                      <span className="sorec-signed">
+                        <Check size={14} aria-hidden /> {last ? "Signed · Completed" : "Signed"}
+                      </span>
+                    </div>
+                    <div className="sorec-body">
+                      {rec.lead ? (
+                        <p className="sorec-statement">
+                          <strong>{rec.lead}</strong> {rec.rest}
+                        </p>
+                      ) : (
+                        <p className="muted">{g.signs}.</p>
+                      )}
+                      {rec.actions.length > 0 && (
+                        <div className="sorec-actions">
+                          <span className="sorec-label">Actions</span>
+                          {rec.actions.map((a, i) => (
+                            <div key={i} className="sorec-action">
+                              <span className="sorec-owner">{a.owner}</span>
+                              <span>{a.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+          </ol>
         </section>
       )}
 
@@ -195,7 +241,10 @@ export default function SignOff() {
             <>
               <label className="field">
                 <span className="field-label">Comment</span>
-                <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+                <textarea className="input" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} />
+                <span className="muted small">
+                  What you confirm first; then one action per line as "Owner: action", e.g. "Warehouse: Post the 20EM0003 receipt."
+                </span>
               </label>
               <label className="check-line">
                 <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />

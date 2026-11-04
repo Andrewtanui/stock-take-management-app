@@ -2,15 +2,17 @@
 // Two implementations: ./mock (demo data in the browser) and ./dataverse (the
 // IBKY Stock Take tables). Pick one with VITE_DATA=mock|dataverse.
 
-import type { ReconItem } from "../types";
+import type { ReconItem, ThreadComment } from "../types";
 import type { GovernanceData } from "../governance";
 import type { Kpi } from "../kpi";
 import type { ComtrasLine, ComtrasUpload } from "../comtras-parse";
 import type { ContractLine, ContractUpload } from "../contracts-parse";
 import type { ShipmentLine, ShipmentUpload } from "../shipments-parse";
+import type { SubProductRegister, SubProductRow, SubProductUpload } from "../subproducts-parse";
 import type { XbsStuffing, XbsStuffingUpload } from "../xbs-shipped-parse";
 import type { DirectLot, DirectUpload } from "../direct-parse";
 import type { AllocRules, Plan } from "../allocate";
+import type { CountImportPlan, CountPreview, ImportOptions } from "../count-import";
 import type { Gate } from "../repository";
 import type {
   AllocationChange,
@@ -96,14 +98,23 @@ export interface MgmtData {
   allocation?: AllocationData;
   /** The BRIC bridge for the active stock take: coffee afloat and reconciling items. */
   reconItems?: ReconItem[];
+  /** Comment threads on exceptions and variances, oldest first. */
+  comments?: ThreadComment[];
   /** The Comtras 537 contract invoicing journal loaded for the active stock take, if any. */
   contractJournal?: ContractJournal;
   /** The shipment tracker (Trade / Logistics) loaded for the active stock take, if any. */
   shipments?: ShipmentTracker;
   /** XBS stuffing dates (shipped report) loaded for the active stock take: one file per month. */
   xbsStuffing?: XbsStuffingSet;
+  /** The warehouse's sub-product registers (sub-products report, franchise inventory) loaded for the active stock take. */
+  subProducts?: SubProductSet;
   /** Setting AfloatAgeingDays ("30,60"): day limits of the afloat ageing buckets. */
   afloatAgeingDays?: number[];
+  /** Settings ThirdPartyAgeingDays ("14,21,30,60,90") and ThirdPartyAgeDays ("21"): third-party ageing. */
+  thirdPartyAgeingDays?: number[];
+  thirdPartyCallOffDays?: number;
+  /** Setting SubProductAgeDays ("90"): days a sub-product may wait to be bulked or sold. */
+  subProductAgeDays?: number;
   /** Trading's direct purchase lots loaded for the active stock take, if any. */
   directLots?: DirectLots;
   /** Setting AssistantEnabled: the Stock Assistant agent and flow F11 exist in this environment. */
@@ -176,6 +187,8 @@ export interface DataSource {
   importXbs(upload: XbsUploadToSave, onProgress?: (done: number, total: number) => void): Promise<string>;
   addReconItem(item: ReconItem): Promise<string>;
   removeReconItem(id: string): Promise<void>;
+  /** Adds a comment to an exception's or a variance's thread; returns its id. */
+  addComment(c: ThreadComment): Promise<string>;
   /** Stores the Comtras P526 position for the active stock take (locked: once per stock take). */
   importComtras(upload: ComtrasUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
   /** Stores the Comtras 537 journal for the active stock take (locked: once per stock take). */
@@ -184,6 +197,12 @@ export interface DataSource {
   importShipments?(upload: ShipmentUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
   /** Adds an XBS shipped report's stuffing dates to the active stock take (rows already saved are skipped). */
   importXbsStuffing?(upload: XbsStuffingUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
+  /** Stores a sub-product register for the active stock take (locked: one file per register). */
+  importSubProducts?(upload: SubProductUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
+  /** Reads the old Physical Count app's CSV against the active stock take: what would be loaded (writes nothing). */
+  planCounts?(csvText: string, opt: ImportOptions): Promise<CountPreview>;
+  /** Loads a planned count into the active stock take (Count in progress only; an interrupted load finishes). */
+  importCounts?(plan: CountImportPlan, file: string, onProgress?: (done: number, total: number) => void): Promise<void>;
   /** Stores Trading's direct purchase lots for the active stock take (locked: once per stock take). */
   importDirectLots?(upload: DirectUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
   decideSheet(id: string, status: SheetStatus, comment: string): Promise<void>;
@@ -225,6 +244,12 @@ export interface DirectLots {
 }
 
 /** XBS stuffing dates as loaded for a stock take, from one or more monthly shipped reports. */
+export interface SubProductSet {
+  /** File per register. */
+  files: Partial<Record<SubProductRegister, string>>;
+  rows: SubProductRow[];
+}
+
 export interface XbsStuffingSet {
   files: string[];
   rows: XbsStuffing[];

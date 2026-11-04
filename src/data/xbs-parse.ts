@@ -51,12 +51,19 @@ export function parseReport(file: string, data: Cell[][]): ParsedReport {
   return { file, type: /blocked/i.test(type) ? "B" : "W", generatedAt: reportTime(meta.get("Report Generated On") ?? ""), rows };
 }
 
-/** Matches an XBS warehouse name ("MITCHEL COTTS FREIGHT KENYA LIMITED") to a site by its first word. */
-export function siteResolver(sites: { code: SiteCode; name: string }[]) {
-  const first = (s: string) => s.trim().toUpperCase().split(/\s+/)[0];
+/**
+ * Matches an XBS warehouse name to a site: by full name first ("IBERO MILL EXPORT" → Ibero Mill
+ * Export), then a third-party site by its first word ("MITCHEL COTTS FREIGHT KENYA LIMITED" →
+ * Mitchel Cotts). Ibero's own buildings share the first word, so they only match by full name: a
+ * building with no site yet is reported as unknown instead of being merged into another.
+ */
+export function siteResolver(sites: { code: SiteCode; name: string; thirdParty?: boolean }[]) {
+  const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
+  const first = (s: string) => norm(s).split(" ")[0];
+  const byName = new Map(sites.map((s) => [norm(s.name), s.code]));
   const byWord = new Map<string, SiteCode>();
-  for (const s of sites) byWord.set(first(s.name), s.code);
-  return (xbsName: string) => byWord.get(first(xbsName));
+  for (const s of sites) if (s.thirdParty !== false) byWord.set(first(s.name), s.code);
+  return (xbsName: string) => byName.get(norm(xbsName)) ?? byWord.get(first(xbsName));
 }
 
 /** Turns parsed reports into XBS lines: Warehouse report first, then Blocked for Processing. */
@@ -110,7 +117,7 @@ export interface XbsUpload {
 }
 
 /** Reads the chosen .xlsx files in the browser. */
-export async function readXbsFiles(files: File[], sites: { code: SiteCode; name: string }[]): Promise<XbsUpload> {
+export async function readXbsFiles(files: File[], sites: { code: SiteCode; name: string; thirdParty?: boolean }[]): Promise<XbsUpload> {
   // The worker-free build: the Power Apps player won't run Web Workers (see src/vendor/fflate-sync.ts).
   const { readSheet } = await import("read-excel-file/universal");
   const reports: ParsedReport[] = [];

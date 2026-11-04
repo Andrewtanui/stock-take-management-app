@@ -1,8 +1,9 @@
 import { ArrowRight, Check, Download } from "lucide-react";
 import { useNav, type Page } from "../App";
-import { netVariance } from "../data/recon";
+import { bricBridge, netVariance } from "../data/recon";
 import { TARGET_PCT, TODAY, coverage, openGates, sum } from "../data/repository";
 import { useStore } from "../data/store";
+import { downloadPdf, l2Pdf } from "../data/l2-pdf";
 import { Chip, Progress, Stat, n, signed } from "../ui/kit";
 import { Headline } from "../ui/Logo";
 
@@ -193,6 +194,19 @@ function ReconChain() {
         ? `Level 1 is set to run on the server, but the engine has not finished a run in the last 15 minutes${l1.lastRun ? ` (last ${at(l1.lastRun)})` : ""}, so the Hub ran it on this load.`
         : `Level 1 runs on the server engine · last run ${at(l1.lastRun)}.`;
   const when = close?.closedAt ? new Date(close.closedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  // The Level 2 report as Finance signs it on paper, with who signed each gate so far.
+  const l2 = async () => {
+    const bridge = bricBridge({ counts: store.counts, stacks: store.stacks, baskets: store.baskets }, store.reconItems);
+    if (!bridge) return store.flash("Load the Comtras P526 for this stock take first.");
+    const month = store.kpiCountDate ? new Date(store.kpiCountDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "";
+    const signers = store.chain.map((g) => {
+      const s = store.signatures[g.gate];
+      return { tier: g.tier, gate: g.gate, name: store.signerOf(g.gate).name, by: s?.by, at: s?.at };
+    });
+    const name = `Level 2 reconciliation - ${st.title}.pdf`.replace(/[\\/:*?"<>|]/g, "-");
+    downloadPdf(await l2Pdf({ stockTake: st.title, month, bridge, signers }), name);
+    store.flash(`${name} downloaded.`);
+  };
   const steps: { title: string; detail: string; state: "done" | "next" | "" }[] = [
     {
       title: "Count",
@@ -227,6 +241,11 @@ function ReconChain() {
               <Download size={14} aria-hidden /> Level 1 PDF
             </button>
           )}
+          {store.comtras && (
+            <button className="btn btn-sm" onClick={l2}>
+              <Download size={14} aria-hidden /> Level 2 PDF
+            </button>
+          )}
           <button className="link" onClick={() => go("recon")}>
             Open reconciliation
           </button>
@@ -244,3 +263,4 @@ function ReconChain() {
     </section>
   );
 }
+

@@ -74,7 +74,7 @@ export function l1Summary(s: SummaryInput): string {
   const xbs = s.sites.reduce((a, x) => a + x.xbs, 0);
   const phys = s.sites.reduce((a, x) => a + x.physical, 0);
   const INK2 = "#5f5f5f", INK3 = "#949494", HAIR = "#e8e8e8", PAGE = "#f5f5f5", CRIT = "#ed1c24";
-  const F = "font-family:'Segoe UI',Arial,Helvetica,sans-serif";
+  const F = "font-family:'Noto Sans','Segoe UI',Arial,Helvetica,sans-serif";
   const card = `background:#ffffff;border:1px solid ${HAIR};border-radius:12px`;
   const stat = (label: string, value: string, note: string, color = "#000000") =>
     `<td width="33%" style="padding:0 6px"><table width="100%" cellpadding="0" cellspacing="0" style="${card}"><tr><td style="${F};padding:14px 16px">` +

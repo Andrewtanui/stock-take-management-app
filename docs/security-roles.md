@@ -11,7 +11,7 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 - **STK Trading** — Direct purchases, contract exceptions, mapping requests; signs the Trading gate.
 - **STK Finance** — Decides mapping changes and variances, prepares and certifies the position; signs the Finance gate.
 - **STK IT Admin** — Warehouses, packing types, settings and problem-report triage.
-- **STK Importer** — Loads XBS, Comtras, shipment tracker, XBS stuffing and direct purchase snapshots. Create-only on the locked tables — no role can edit or delete them.
+- **STK Importer** — Loads XBS (stock and zones), Comtras, shipment tracker, XBS stuffing, sub-product register and direct purchase snapshots. Create-only on the locked tables — no role can edit or delete them.
 - **STK Engine** — For the Stock Assistant's engine (application user, not a person): reads every stk_ table, raises and updates its own rule exceptions in stk_exception, and keeps its own ibky_ tables (when that solution is installed).
 - **STK Level 1 Engine** — For the server engine stk-level1 (application user, not a person), active only when setting Level1Runs = Engine: turns the count into variances, decides them by the Level 1 rules, sends blind recounts, raises exceptions (owned by the department head) and closes the count with its summary and PDF. Never deletes.
 
@@ -22,11 +22,13 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 | `stk_setting` | R | R | R | R | R | CRWD |  | R | R |
 | `stk_xbsimport` | R | R | R | R | R | R | CRW | R | R |
 | `stk_xbsline` 🔒 | R | R | R | R | R | R | CR | R | R |
+| `stk_zone` 🔒 | R | R | R | R | R | R | CR | R | R |
 | `stk_comtrasposition` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_contractinvoice` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_shipment` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_directlot` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_xbsstuffing` 🔒 |  | R | R | R | R | R | CR | R | R |
+| `stk_subproduct` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_mappingchange` |  | R · CW (own) | R | R · CW (own) | CRW | R |  | R | R |
 | `stk_basketmap` | R | R | R | R | CRW | R |  | R | R |
 | `stk_outturnmap` | R | R | R | R | CRW | R |  | R | R |
@@ -43,6 +45,7 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 | `stk_recount` | RW (own) | CRWA | CRWA | R | R | R |  | R | CRWA |
 | `stk_countline` | R · CW (own) | R | R | R | R | R |  | R | R |
 | `stk_exception` |  | CRWA | CRWA | CRWA | CRWA | R |  | CRWA | CRWA |
+| `stk_comment` 🔒 |  | CR | CR | CR | CR | R |  | R | R |
 | `stk_signoff` |  | CR | CR | CR | CR | R |  | R | R |
 | `stk_directpurchase` |  | R | R | CRW | R | R |  | R | R |
 | `stk_issue` | CRW (own) | RWA | R | R | R | RWA |  | R | R |

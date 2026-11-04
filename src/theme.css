@@ -3,10 +3,9 @@
    (people, stories). Text is black or white. Shared by the Stock Take and
    Stock Management apps — keep both copies identical. */
 
-/* Type: Aptifer Sans LT Pro (the brand face) is licensed, so the apps use
-   Bricolage Grotesque — a free (SIL OFL), characterful grotesque with lining
-   figures and a 200–800 variable weight axis — bundled via
-   @fontsource-variable/bricolage-grotesque. */
+/* Type: Noto Sans (NKG's choice, 2 Nov 2026) — free (SIL OFL), a 100–900
+   variable weight axis, bundled via @fontsource-variable/noto-sans. (Aptifer
+   Sans LT Pro, the Brand Book face, is licensed.) */
 
 :root {
   /* FRESH range */
@@ -55,7 +54,7 @@
   --space-6: 32px;
   --radius: 8px;
   --brand-bar: 5px;
-  --font-sans: "Bricolage Grotesque Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-sans: "Noto Sans Variable", "Noto Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   /* IDs (outturns, stacks, warrants) use the same face with tabular figures. */
   --font-code: var(--font-sans);
 

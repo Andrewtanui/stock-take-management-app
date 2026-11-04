@@ -3,7 +3,7 @@
 // come from the NKG_config, Stock Takes and Count Sheets SharePoint lists, the
 // Dataverse staging tables and the Comtras/BRIC extracts.
 
-export type SiteCode = "IBR" | "AGL" | "KPCU" | "MAXA" | "MCF" | "KCCE";
+export type SiteCode = "IBR" | "IBM" | "AGL" | "KPCU" | "MAXA" | "MCF" | "KCCE";
 
 /** W = XBS "Warehouse" stock, B = XBS "Blocked for Processing" stock. */
 export type StockType = "W" | "B";
@@ -235,6 +235,19 @@ export interface Exception {
 }
 
 export type Priority = "High" | "Medium" | "Low";
+
+/** One comment in the thread on an exception or a variance. Never edited or deleted once saved. */
+export interface ThreadComment {
+  id?: string;
+  on: "Exception" | "Variance";
+  /** EX-### for an exception, the variance's id for a variance. */
+  target: string;
+  text: string;
+  /** The department the comment speaks for. */
+  dept: Dept;
+  by?: string;
+  at?: string;
+}
 
 export type PrimaryBasket = "Plus" | "FAQ" | "Grinder";
 export interface BasketMap {

@@ -23,6 +23,9 @@ const xbs = JSON.parse(readFileSync(new URL("src/data/xbs-2026-03-02.json", root
 
 const SITES = [
   { code: "IBR", name: "Ibero Export Warehouse", short: "Ibero", thirdParty: false, manualEntry: true, layout: true },
+  // Second Ibero building, same compound and count team (added 2 Nov 2026; no stock yet, expected early 2027).
+  // Its name must equal the XBS warehouse name: Ibero sites are matched by full name.
+  { code: "IBM", name: "Ibero Mill Export", short: "Mill Export", thirdParty: false, manualEntry: true, layout: true },
   { code: "AGL", name: "AGL", short: "AGL", thirdParty: true, manualEntry: false },
   { code: "KPCU", name: "New KPCU", short: "New KPCU", thirdParty: true, manualEntry: false },
   { code: "MAXA", name: "Maxa Africa Logistics", short: "Maxa", thirdParty: true, manualEntry: false },

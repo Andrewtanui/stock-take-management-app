@@ -471,7 +471,8 @@
             "Direct purchase",
             "Partial delivery: rest still at third party",
             "Weight loss: claim from warehouse",
-            "Posting timing / late posting"
+            "Posting timing / late posting",
+            "Sub-products"
           ],
           "x-ms-enum-values": [
             614500000,
@@ -489,9 +490,11 @@
             614500012,
             614500013,
             614500014,
-            614500015
+            614500015,
+            614500016
           ],
           "Color": [
+            null,
             null,
             null,
             null,

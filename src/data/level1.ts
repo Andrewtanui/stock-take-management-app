@@ -146,7 +146,7 @@ export async function level1Runner(db: Level1Db, runs: "Hub" | "Engine", now = n
 
 /* ---------- rows Level 1 reads ---------- */
 
-export type StackRow = { stk_stackid: string; stk_name: string; _stk_site_value?: string; stk_status?: number; stk_nothinghere?: boolean; stk_sitefinished?: boolean; stk_comment?: string; stk_submittedon?: string; _stk_submittedby_value?: string };
+export type StackRow = { stk_stackid: string; stk_name: string; _stk_site_value?: string; stk_status?: number; stk_nothinghere?: boolean; stk_sitefinished?: boolean; stk_notcounted?: boolean; stk_comment?: string; stk_submittedon?: string; _stk_submittedby_value?: string };
 export type LineRow = {
   stk_countlineid: string;
   _stk_stack_value?: string;
@@ -200,7 +200,7 @@ export const xbsLineOf = (r: XbsRow, siteCode: Map<string, SiteCode>): XbsLine =
   cy: r.stk_cropyear ?? undefined,
 });
 
-export const STACK_SELECT = ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value", "stk_nothinghere", "stk_sitefinished", "stk_comment", "stk_submittedon", "_stk_submittedby_value"];
+export const STACK_SELECT = ["stk_stackid", "stk_name", "_stk_site_value", "stk_status", "_stk_countsheet_value", "stk_nothinghere", "stk_sitefinished", "stk_notcounted", "stk_comment", "stk_submittedon", "_stk_submittedby_value"];
 export const LINE_SELECT = [
   "stk_countlineid", "stk_outturn", "stk_batch", "stk_grade", "_stk_stack_value", "_stk_site_value", "stk_bags", "stk_pocketbags", "stk_units", "stk_kg",
   "stk_reason", "stk_isfound", "stk_isother", "stk_countedon", "_createdby_value", "_stk_countsheet_value",
@@ -209,7 +209,7 @@ export const LINE_SELECT = [
 
 /**
  * The count as the rules read it: one fact per count line, the stacks that are in, and the
- * third-party sites the counter closed (reported empty, or finished after counting every stack).
+ * third-party sites closed (reported empty, finished after counting every stack, or not counted on purpose).
  */
 export function level1Facts(o: {
   stackRows: StackRow[];
@@ -238,7 +238,7 @@ export function level1Facts(o: {
     recount: recountName.get(c._stk_recount_value ?? ""),
   }));
   const emptySites: EmptySite[] = o.stackRows
-    .filter((r) => (r.stk_nothinghere || r.stk_sitefinished) && isIn(r))
+    .filter((r) => (r.stk_nothinghere || r.stk_sitefinished || r.stk_notcounted) && isIn(r))
     .map((r) => ({
       site: o.siteCode.get(r._stk_site_value!)!,
       stack: r.stk_name,
@@ -246,6 +246,7 @@ export function level1Facts(o: {
       at: hhmm(r.stk_submittedon),
       reason: r.stk_comment ?? "No reason given",
       finished: !!r.stk_sitefinished && !r.stk_nothinghere,
+      notCounted: !!r.stk_notcounted && !r.stk_nothinghere && !r.stk_sitefinished,
     }));
   return { stackOf, submittedStacks, facts, emptySites };
 }
@@ -645,10 +646,18 @@ export async function closeCountIfDone(
   const xbs = new Map<SiteCode, number>();
   for (const l of o.lines) xbs.set(l.wh, (xbs.get(l.wh) ?? 0) + l.kg / 60);
   const fromCount = o.exceptions.filter((e) => e.source === "Count");
+  const notCounted = new Set(o.emptySites.filter((e) => e.notCounted).map((e) => e.site));
   const input: SummaryInput = {
     stockTake: o.active.stk_name,
     closedAt,
-    sites: o.sites.filter((x) => xbs.has(x.code) || phys.has(x.code)).map((x) => ({ name: x.short, xbs: xbs.get(x.code) ?? 0, physical: phys.get(x.code) ?? 0 })),
+    // A site not counted on purpose shows its XBS figure as the physical, and says so.
+    sites: o.sites
+      .filter((x) => xbs.has(x.code) || phys.has(x.code))
+      .map((x) =>
+        notCounted.has(x.code)
+          ? { name: `${x.short} (not counted: XBS figure)`, xbs: xbs.get(x.code) ?? 0, physical: xbs.get(x.code) ?? 0 }
+          : { name: x.short, xbs: xbs.get(x.code) ?? 0, physical: phys.get(x.code) ?? 0 },
+      ),
     variances: {
       total: o.variances.length,
       accepted: o.variances.filter((v) => v.state === "accepted").length,

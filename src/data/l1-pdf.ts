@@ -4,7 +4,8 @@
 // Apps player), saved as a note on the stock take, attached to flow F10's email and downloadable
 // from the Overview.
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, type PDFPage } from "pdf-lib";
+import { notoSans, safeText } from "./pdf-fonts";
 import logoUrl from "../assets/nkg-mark.png?inline";
 import type { SummaryInput } from "./close-count";
 import { SLOGAN } from "../shared/brand";
@@ -25,7 +26,7 @@ const signed = (x: number) => `${x > 0 ? "+" : x < 0 ? "-" : ""}${bags(Math.abs(
 const pct = (d: number, base: number) => (base ? `${d > 0 ? "+" : d < 0 ? "-" : ""}${Math.abs((d / base) * 100).toFixed(1)}%` : "-");
 
 /** The logo the app ships with (built into the bundle, so the player can't fail to load it). */
-function logoBytes() {
+export function logoBytes() {
   const bin = atob(logoUrl.split(",")[1] ?? "");
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
@@ -38,13 +39,12 @@ export async function l1Pdf(s: SummaryInput, logoPng: Uint8Array | undefined = l
   doc.setAuthor("Ibero Kenya Limited - Stock Management Hub");
   doc.setSubject("Stock take: physical against XBS (Level 1)");
   const page = doc.addPage([595.28, 841.89]); // A4
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { font, bold } = await notoSans(doc);
   const W = page.getWidth(), TOP = page.getHeight();
   const M = 40;
 
   // Helvetica only has the WinAnsi characters: anything else becomes "?" instead of failing.
-  const safe = (t: string, f: PDFFont) => [...t].map((ch) => { try { f.encodeText(ch); return ch; } catch { return "?"; } }).join("");
+  const safe = safeText;
   const text = (p: PDFPage, t: string, x: number, y: number, size: number, f = font, color = INK) => p.drawText(safe(t, f), { x, y, size, font: f, color });
   const right = (p: PDFPage, t: string, xr: number, y: number, size: number, f = font, color = INK) => {
     const v = safe(t, f);

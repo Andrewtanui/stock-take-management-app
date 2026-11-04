@@ -5,6 +5,7 @@ import { useStore } from "../data/store";
 import type { RootCause, Variance } from "../data/types";
 import { Chip, Code, Diff, PageHead, ReadOnly, Tabs, n, signed, type Tone } from "../ui/kit";
 import { PhotoButton } from "../ui/PhotoButton";
+import { Thread } from "../ui/Thread";
 
 const CAUSES: RootCause[] = [
   "Split lot",
@@ -127,7 +128,7 @@ export default function Variances() {
                     </strong>
                   </span>
                   <span className="muted small">
-                    {v.site === "IBR" ? `Ibero ${v.zone}` : v.zone} · {v.grade}
+                    {v.site === "IBR" ? `Ibero ${v.zone}` : v.site === "IBM" ? `Mill Export ${v.zone}` : v.zone} · {v.grade}
                   </span>
                   <span className="vrow-foot">
                     <span className={"cause-tag" + (cause === "Not yet known" ? " unknown" : "")}>{cause}</span>
@@ -300,6 +301,8 @@ function Detail({ v, allowed, onBack, onDecided }: { v: Variance; allowed: boole
           </table>
         </div>
       </section>
+
+      <Thread on="Variance" target={v.id} />
 
       {allowed && v.state === "open" && (
         // Pinned to the bottom of the panel, so the decision is always in view.

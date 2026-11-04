@@ -37,8 +37,8 @@ export function setReference(r: Reference) {
   USERS = r.users;
   PACK_TYPES = r.packTypes;
   STOCK_TAKE_GROUPS = r.stockTakeGroups;
-  CANCELLED = new Set(r.contracts.cancelled);
-  SHIPPED = new Set(r.contracts.shipped);
+  CANCELLED_REF = new Set(r.contracts.cancelled);
+  SHIPPED_REF = new Set(r.contracts.shipped);
   STUFFED_28FEB = new Set(r.contracts.stuffed);
   PHYS_DELTA = r.physDelta;
   COMTRAS_DELTA = r.comtrasDelta;
@@ -263,11 +263,16 @@ export function coverage() {
 
 /* ---------- pre-count checks (computed from the snapshot) ---------- */
 
-let CANCELLED = new Set<string>();
-let SHIPPED = new Set<string>();
+let CANCELLED_REF = new Set<string>();
+let SHIPPED_REF = new Set<string>();
 export let STUFFED_28FEB = new Set<string>();
 
-export function checks(): Check[] {
+/**
+ * `contracts` = each contract's state from the shipment tracker; without it, the reference sets (mock).
+ * `callOff` = the third-party call-off rule in days (setting ThirdPartyAgeDays).
+ */
+export function checks(contracts?: { cancelled: Set<string>; shipped: Set<string>; stuffed: Set<string> }, callOff = 21): Check[] {
+  const { cancelled: CANCELLED, shipped: SHIPPED, stuffed: STUFFED } = contracts ?? { cancelled: CANCELLED_REF, shipped: SHIPPED_REF, stuffed: STUFFED_28FEB };
   const W = lines.filter((l) => l.t === "W");
   const tp = W.filter((l) => site(l.wh).thirdParty);
   const mk = (rows: XbsLine[], info: (l: XbsLine) => string, ref: (l: XbsLine) => string = (l) => l.o) =>
@@ -275,8 +280,8 @@ export function checks(): Check[] {
 
   const cancelled = W.filter((l) => l.so && CANCELLED.has(l.so));
   const shipped = W.filter((l) => l.so && SHIPPED.has(l.so));
-  const stuffed = W.filter((l) => l.so && STUFFED_28FEB.has(l.so));
-  const aged = tp.filter((l) => (l.d ?? 0) > 21).sort((a, b) => (b.d ?? 0) - (a.d ?? 0));
+  const stuffed = W.filter((l) => l.so && STUFFED.has(l.so));
+  const aged = tp.filter((l) => (l.d ?? 0) > callOff).sort((a, b) => (b.d ?? 0) - (a.d ?? 0));
   const byOutturn = new Map<string, XbsLine[]>();
   for (const l of W) byOutturn.set(l.o, [...(byOutturn.get(l.o) ?? []), l]);
   const split = [...byOutturn.values()].filter((xs) => new Set(xs.map((x) => x.wh)).size > 1);
@@ -313,7 +318,7 @@ export function checks(): Check[] {
     },
     {
       id: "aged", severity: "medium", owner: "Operations",
-      title: "Third-party stock over 21 days",
+      title: `Third-party stock over ${callOff} days`,
       detail: "Past the call-off rule. Each day adds storage cost.",
       count: aged.length, bags: sum(aged, (l) => l.bg), unit: "lots",
       rows: mk(aged, (l) => `${l.d} days · ${l.i}${l.g ? " · " + l.g : ""}`),
