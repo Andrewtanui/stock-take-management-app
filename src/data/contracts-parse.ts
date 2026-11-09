@@ -83,9 +83,11 @@ export function parse537(rows: Cell[][]): ContractLine[] | null {
     mandant: col("Mandant"), side: col("FIBU2"), account: col("FIBU3"), name: col("Kurz-Name"), profile: col("Profil"),
     booked: col("BookDat"), vouchDate: col("VouchDat"), voucher: col("VouchNo"), symbol: col("Symbol"),
     pctr: col("P.Ctr."), sctr: col("S.Ctr."), pdate: col("P.Ctr. Date"), sdate: col("S.Ctr. Date"),
-    buyBags: col("EK-Sack"), buyKg: col("EK-KG"), buy60: col("EK 60KG Bags"), buyValue: col("EK-Wert"),
-    sellBags: col("VK-Sack"), sellKg: col("VK-KG"), sell60: col("VK 60KG BAGS"), sellValue: col("VK-Wert"),
+    buyBags: col("EK-Sack"), buyKg: col("EK-KG"), buyValue: col("EK-Wert"),
+    sellBags: col("VK-Sack"), sellKg: col("VK-KG"), sellValue: col("VK-Wert"),
   };
+  // The 60 kg bags are worked out from the kg. Finance adds them by hand ("EK 60KG Bags" in August,
+  // "EK 60" in October) and the raw export has none; on every line of both files they are kg / 60.
   const out: ContractLine[] = [];
   const others = new Map<string, number>();
   rows.slice(at + 1).forEach((r, i) => {
@@ -111,11 +113,11 @@ export function parse537(rows: Cell[][]): ContractLine[] | null {
       salesContractDate: ymd(r[c.sdate]),
       buyBags: num(r[c.buyBags]),
       buyKg: num(r[c.buyKg]),
-      buy60: num(r[c.buy60]),
+      buy60: num(r[c.buyKg]) / 60,
       buyValue: num(r[c.buyValue]),
       sellBags: num(r[c.sellBags]),
       sellKg: num(r[c.sellKg]),
-      sell60: num(r[c.sell60]),
+      sell60: num(r[c.sellKg]) / 60,
       sellValue: num(r[c.sellValue]),
     });
   });
@@ -125,6 +127,41 @@ export function parse537(rows: Cell[][]): ContractLine[] | null {
   }
   return out;
 }
+
+/**
+ * A 537 line's identity across files: the journal has no line id, so a line is its voucher, side,
+ * account, contracts, document type, kg and value. Two files covering the same days share these.
+ */
+export const lineIdentity = (l: ContractLine) =>
+  [l.voucher, l.side, l.account, l.docType, l.purchaseContract, l.salesContract, l.bookedOn, l.buyKg, l.buyValue, l.sellKg, l.sellValue].join("|");
+
+/**
+ * The lines of a new 537 file not already loaded from another file (one month's export next to
+ * another's, or two exports that overlap). Counted as a multiset: a line repeated within one file
+ * is real and kept; a line that is also in a file already loaded is skipped once per copy there.
+ */
+export function newContractLines(upload: ContractLine[], loaded: ContractLine[]) {
+  const have = new Map<string, number>();
+  for (const l of loaded) have.set(lineIdentity(l), (have.get(lineIdentity(l)) ?? 0) + 1);
+  const fresh: ContractLine[] = [];
+  let duplicates = 0;
+  for (const l of upload) {
+    const k = lineIdentity(l);
+    const left = have.get(k) ?? 0;
+    if (left > 0) {
+      have.set(k, left - 1);
+      duplicates++;
+    } else fresh.push(l);
+  }
+  return { fresh, duplicates };
+}
+
+/** First day of the afloat look-back for a cut-off: the month of the cut-off and the two before it. */
+export const lookbackStart = (cutOff: string) => {
+  const d = new Date(`${cutOff.slice(0, 7)}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - 2);
+  return d.toISOString().slice(0, 10);
+};
 
 /** Totals for the upload panel: what was bought and sold, and how much was booked by the cut-off. */
 export function contractTotals(lines: ContractLine[], cutOff?: string) {

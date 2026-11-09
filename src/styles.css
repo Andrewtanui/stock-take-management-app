@@ -65,6 +65,10 @@ p { margin: 0; }
 .rail-st-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
 .rail-st-day { font-variant-numeric: tabular-nums; }
 .rail-st-track { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--brand-black) 8%, var(--brand-white)); overflow: hidden; }
+.rail-pick { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.rail-pick select { width: 100%; padding: 6px 8px; border: 1px solid var(--hair); border-radius: var(--r-sm, 6px); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.callout-info { background: color-mix(in srgb, var(--brand-neumann-green) 12%, var(--brand-white)); }
+.view-banner { margin-bottom: 16px; }
 .rail-st-track > span { display: block; height: 100%; border-radius: 2px; background: var(--brand-neumann-green); }
 .nav-group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; }
 .nav-label { padding: 6px 10px 4px; font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }

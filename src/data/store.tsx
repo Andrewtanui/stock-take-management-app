@@ -4,6 +4,9 @@
 // others (approve a sheet, close a variance, sign a gate). Power Automate
 // reacts to the saved rows (notifications, escalations).
 
+import type { TransferUpload } from "./transfers-parse";
+import type { RecountPlan, RecountSheetRow } from "./recount-import";
+import type { TransferReport } from "./source/types";
 import type { ReconItem, ThreadComment } from "./types";
 import type { ComtrasUpload } from "./comtras-parse";
 import type { ContractUpload } from "./contracts-parse";
@@ -91,9 +94,10 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
   // Count lines and stacks are read-only here; they change in the counter app.
   const counts = data.counts ?? [];
   const [comtras, setComtras] = useState<ComtrasPosition | undefined>(data.reference.comtras);
-  const [contractJournal, setContractJournal] = useState<ContractJournal | undefined>(data.contractJournal);
+  const [contractJournal] = useState<ContractJournal | undefined>(data.contractJournal);
   const [shipments, setShipments] = useState<ShipmentTracker | undefined>(data.shipments);
   const [xbsStuffing, setXbsStuffing] = useState<XbsStuffingSet | undefined>(data.xbsStuffing);
+  const [transferReports, setTransferReports] = useState<TransferReport[] | undefined>(data.transferReports);
   const [subProducts, setSubProducts] = useState<SubProductSet | undefined>(data.subProducts);
   const [directLots, setDirectLots] = useState<DirectLots | undefined>(data.directLots);
   const [reconItems, setReconItems] = useState<ReconItem[]>(data.reconItems ?? []);
@@ -112,9 +116,11 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
 
   /* governance KPIs (kpi.ts): worked out from what is loaded; saved on load, frozen when Finance signs */
   const [governance, setGovernance] = useState<GovernanceData | undefined>(data.governance);
-  const activeStockTake = (stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0])?.id ?? "";
+  // The stock take this load is about: the current one, or a past one being looked at (read-only).
+  const activeSt = stockTakes.find((x) => x.id === data.activeStockTake) ?? stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0];
+  const activeStockTake = activeSt?.id ?? "";
   /** The sign-off gates of the active stock take's type. */
-  const chain = chainFor((stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0])?.type);
+  const chain = chainFor(activeSt?.type);
   const kpis = useMemo(
     () => (governance ? governanceKpis({ input: { counts, stacks, baskets }, reconItems, variances, exceptions, stockTake: activeStockTake, gov: governance }) : undefined),
     [governance, counts, stacks, baskets, reconItems, variances, exceptions, activeStockTake],
@@ -211,6 +217,7 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
     shipments,
     /** XBS stuffing dates (shipped reports) loaded for the active stock take; they correct the tracker's. */
     xbsStuffing,
+    transferReports,
     /** The warehouse's sub-product registers loaded for the active stock take (book side of off-system stock). */
     subProducts,
     /** Day limits of the afloat ageing buckets (setting AfloatAgeingDays), if set. */
@@ -232,9 +239,24 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
     kpisFrozen,
     kpiCountDate: governance?.countDate,
     activeStockTake,
+    /** The stock take every page shows (the current one, or a past one being looked at). */
+    stockTake: activeSt,
+    /** Looking at a past stock take: read-only, Level 1 doesn't run. */
+    viewing: !!data.viewing,
+    /** The current stock take (the latest not Completed), by name. */
+    currentStockTake: data.currentStockTake ?? activeStockTake,
+    /** Loads another stock take to look at (undefined: back to the current one). */
+    viewStockTake(name?: string) {
+      if (!source.viewStockTake) {
+        flash("The preview has one stock take only.");
+        return;
+      }
+      source.viewStockTake(name && name !== (data.currentStockTake ?? activeStockTake) ? name : undefined);
+      reload();
+    },
     /** Downloads the Level 1 summary PDF of the active stock take. */
     async downloadL1Pdf() {
-      const st = stockTakes.find((x) => x.status !== "Completed") ?? stockTakes[0];
+      const st = activeSt;
       const pdf = st && (await source.getL1Pdf?.(st.id).catch(() => undefined));
       if (!pdf) {
         flash("The Level 1 PDF isn't available yet. It is made when counting closes.");
@@ -512,9 +534,10 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
       return source
         .importContracts(upload, onProgress)
         .then(() => {
-          setContractJournal({ file: upload.file, at: stamp(), by: me, lines: upload.lines });
-          log("Comtras", upload.file, `Loaded ${upload.lines.length} lines of the 537 contract journal`);
-          flash(`Contract journal loaded: ${upload.lines.length} lines.`);
+          log("Comtras", upload.file, `Loaded the 537 contract journal (${upload.lines.length} lines in the file; lines already loaded from another file skipped)`);
+          flash(`Contract journal loaded: ${upload.file}. Reloading to add it to the stock take's 537 lines…`);
+          // Reload: the journal is now every file loaded, with lines in two files kept once.
+          window.setTimeout(reload, 1200);
           return true;
         })
         .catch((e: unknown) => {
@@ -560,6 +583,31 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
         .catch((e: unknown) => {
           console.error(e);
           flash(`Couldn't load the shipment tracker. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /**
+     * Stores an XBS stock transfer or ticket report for the active stock take; resolves true once saved.
+     * The Hub then reloads, so Level 1 adds any evidence it proves to the open weight-loss exceptions.
+     */
+    importTransfers(upload: TransferUpload, onProgress?: (done: number, total: number) => void) {
+      if (!source.importTransfers) {
+        flash("XBS transfer and ticket reports are loaded into Dataverse; this preview has nowhere to keep them.");
+        return Promise.resolve(false);
+      }
+      const rows = upload.kind === "transfers" ? upload.transfers.length : upload.tickets.length;
+      return source
+        .importTransfers(upload, onProgress)
+        .then(() => {
+          setTransferReports((had) => [...(had ?? []), { kind: upload.kind, file: upload.file, reportedAt: upload.reportedAt, rows }]);
+          log("Shipments", upload.file, `Loaded ${rows} ${upload.kind === "transfers" ? "transfer lines" : "weighbridge tickets"}`);
+          flash(`Loaded: ${rows} ${upload.kind === "transfers" ? "transfer lines" : "weighbridge tickets"}. Checking the weight-loss exceptions for evidence…`);
+          window.setTimeout(reload, 1200);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load ${upload.file}. ${e instanceof Error ? e.message : ""}`.trim());
           return false;
         });
     },
@@ -616,6 +664,38 @@ function useStoreState(source: DataSource, data: MgmtData, reload: () => void = 
         .catch((e: unknown) => {
           console.error(e);
           flash(`Couldn't load the count. ${e instanceof Error ? e.message : ""}`.trim());
+          return false;
+        });
+    },
+    /** Reads the returned blind recount sheet against the active stock take's recounts (nothing written). */
+    planRecounts(rows: RecountSheetRow[]): Promise<RecountPlan | undefined> {
+      if (!source.planRecounts) {
+        flash("Recount answers are loaded into Dataverse; this preview has nowhere to keep them.");
+        return Promise.resolve(undefined);
+      }
+      return source.planRecounts(rows).catch((e: unknown) => {
+        console.error(e);
+        flash(`Couldn't read the recount sheet. ${e instanceof Error ? e.message : ""}`.trim());
+        return undefined;
+      });
+    },
+    /** Saves the answers as blind recounts, then reloads so Level 1 settles them; resolves true once saved. */
+    importRecounts(plan: RecountPlan, file: string, onProgress?: (done: number, total: number) => void) {
+      if (!source.importRecounts) {
+        flash("Recount answers are loaded into Dataverse; this preview has nowhere to keep them.");
+        return Promise.resolve(false);
+      }
+      return source
+        .importRecounts(plan, file, onProgress)
+        .then(() => {
+          log("Physical count", file, `Recount answers loaded: ${plan.answers.map((a) => a.recount).join(", ")}`);
+          flash(`${plan.answers.length} recount answer${plan.answers.length === 1 ? "" : "s"} loaded. Level 1 is settling them.`);
+          window.setTimeout(reload, 1200);
+          return true;
+        })
+        .catch((e: unknown) => {
+          console.error(e);
+          flash(`Couldn't load the recount answers. ${e instanceof Error ? e.message : ""}`.trim());
           return false;
         });
     },

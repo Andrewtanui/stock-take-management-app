@@ -17,7 +17,7 @@ export default function XbsStuffingImport({ allowed }: { allowed: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const loaded = store.xbsStuffing;
   const months = [...new Set((loaded?.rows ?? []).map((x) => x.stuffedOn.slice(0, 7)))].sort();
   const have = new Set((loaded?.rows ?? []).map((x) => `${x.salesContract}|${x.si}|${x.stuffedOn}`));

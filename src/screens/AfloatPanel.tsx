@@ -129,7 +129,7 @@ export default function AfloatPanel() {
         ))}
       </ul>
       {r.checks.length > 0 && (
-        <div className="readonly">
+        <div className="callout callout-warn small" style={{ flexDirection: "column", gap: 6 }}>
           <strong>Stuffing dates to fix in the tracker</strong>
           <ul className="plain">
             {r.checks.map((c) => (

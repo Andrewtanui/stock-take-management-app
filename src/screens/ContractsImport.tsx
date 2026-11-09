@@ -1,13 +1,14 @@
 import { useRef, useState } from "react";
 import { CircleAlert, CircleCheck, CircleX, FileSpreadsheet, Upload } from "lucide-react";
-import { DOC_TYPES, contractTotals, read537, type ContractUpload } from "../data/contracts-parse";
+import { DOC_TYPES, contractTotals, lookbackStart, newContractLines, read537, type ContractUpload } from "../data/contracts-parse";
 import { allLines } from "../data/repository";
 import { useStore } from "../data/store";
 import { Chip, n } from "../ui/kit";
 
 /**
  * The Comtras 537 contract invoicing journal for the active stock take: Kenya's (company CC)
- * invoice and credit-note lines per purchase and sales contract. Loaded once, never changed.
+ * invoice and credit-note lines per purchase and sales contract. One file, or one per month: a line
+ * already loaded from another file is kept once. Never changed.
  */
 export default function ContractsImport({ allowed }: { allowed: boolean }) {
   const store = useStore();
@@ -16,9 +17,11 @@ export default function ContractsImport({ allowed }: { allowed: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const loaded = store.contractJournal;
-  const lines = loaded?.lines ?? upload?.lines ?? [];
+  // A new file: only its lines not already loaded from another file are added.
+  const adding = upload ? newContractLines(upload.lines, loaded?.lines ?? []) : undefined;
+  const lines = [...(loaded?.lines ?? []), ...(adding?.fresh ?? [])];
   const cutOff = store.kpiCountDate;
   const t = contractTotals(lines, cutOff);
   const r1 = (x: number) => n(Math.round(x * 10) / 10, 1);
@@ -47,6 +50,17 @@ export default function ContractsImport({ allowed }: { allowed: boolean }) {
   };
 
   const covers = !cutOff || !t.from || (t.from <= cutOff && (t.to ?? "") >= cutOff);
+  // Afloat looks back over the month of the count and the two before it: each month needs its invoices.
+  const months = new Set(lines.map((l) => l.bookedOn.slice(0, 7)).filter(Boolean));
+  const lookback = cutOff
+    ? Array.from({ length: 3 }, (_, i) => {
+        const d = new Date(`${lookbackStart(cutOff)}T00:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() + i);
+        return d.toISOString().slice(0, 7);
+      })
+    : [];
+  const missing = lookback.filter((m) => !months.has(m));
+  const month = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
   const checks = [
     { ok: !!st, label: "A stock take to reconcile", detail: st ? `Loaded for ${st.title}.` : "Start the stock take first; the journal is loaded for it.", block: !st },
     { ok: true, label: "Kenya only (company CC)", detail: `${n(lines.length)} lines: ${[...types].map(([k, v]) => `${v} ${k.toLowerCase()}`).join(", ")}.` },
@@ -56,6 +70,15 @@ export default function ContractsImport({ allowed }: { allowed: boolean }) {
       detail: covers
         ? `Booked ${t.from ?? "-"} to ${t.to ?? "-"}${cutOff ? `, around the count date ${cutOff}` : ""}.`
         : `Booked ${t.from} to ${t.to}, which doesn't include the count date ${cutOff}. Export the journal for the month of the count and the month after.`,
+    },
+    {
+      ok: !missing.length,
+      label: "Covers the afloat look-back",
+      detail: !lookback.length
+        ? "No count date yet."
+        : missing.length
+          ? `No invoice lines booked in ${missing.map(month).join(", ")}. Afloat checks whether shipments stuffed from ${month(lookback[0])} were invoiced by the count date: add that month's 537.`
+          : `Invoice lines in each of ${lookback.map(month).join(", ")}.`,
     },
     {
       ok: !blockedContracts.size || linked.length > 0,
@@ -74,33 +97,34 @@ export default function ContractsImport({ allowed }: { allowed: boolean }) {
       </div>
       <p className="muted small">
         Kenya's invoice and credit-note lines per purchase and sales contract, from Comtras. Sales contracts are the numbers XBS lots are blocked to,
-        so the reconciliation can see coffee sold and invoiced but still in the warehouse at the count. Loaded once per stock take and never changed.
+        so the reconciliation can see coffee sold and invoiced but still in the warehouse at the count. Load one file covering the look-back, or one per
+        month: a line already loaded from another file is kept once. Never changed.
       </p>
 
-      {loaded ? (
-        <p className="readonly ok">
-          <CircleCheck size={16} aria-hidden /> {loaded.file} · {n(loaded.lines.length)} lines · loaded {loaded.at}
-          {loaded.by ? ` by ${loaded.by}` : ""}
+      {loaded?.files.map((f) => (
+        <p key={f.file} className="readonly ok">
+          <CircleCheck size={16} aria-hidden /> {f.file} · {n(f.lines)} lines{f.from ? `, booked ${f.from} to ${f.to}` : ""} · loaded {f.at}
+          {f.by ? ` by ${f.by}` : ""}
         </p>
-      ) : (
-        allowed && (
-          <div className="drop">
-            <Upload size={28} aria-hidden />
-            <p>
-              The <strong>537</strong> contract journal exported from Comtras as Excel (e.g. "D537CCPDF.xlsx"), Kenya only.
-            </p>
-            <input ref={picker} type="file" accept=".xlsx" hidden onChange={(e) => choose(e.target.files)} />
-            <button className="btn" disabled={reading} onClick={() => picker.current?.click()}>
-              {reading ? "Reading…" : "Choose the file"}
-            </button>
-          </div>
-        )
+      ))}
+      {allowed && (
+        <div className="drop">
+          <Upload size={28} aria-hidden />
+          <p>
+            The <strong>537</strong> contract journal exported from Comtras as Excel (e.g. "D537CCPDF.xlsx"), Kenya only{loaded ? ": another month to add" : ""}.
+          </p>
+          <input ref={picker} type="file" accept=".xlsx" hidden onChange={(e) => choose(e.target.files)} />
+          <button className="btn" disabled={reading} onClick={() => picker.current?.click()}>
+            {reading ? "Reading…" : loaded ? "Add another 537" : "Choose the file"}
+          </button>
+        </div>
       )}
       {error && <p className="readonly">{error}</p>}
-      {!loaded && upload && (
+      {upload && adding && (
         <ul className="file-list">
           <li>
-            <FileSpreadsheet size={18} aria-hidden /> {upload.file}
+            <FileSpreadsheet size={18} aria-hidden /> {upload.file} · {n(upload.lines.length)} lines: {n(adding.fresh.length)} new
+            {adding.duplicates ? `, ${n(adding.duplicates)} already loaded from another file (skipped)` : ""}
           </li>
         </ul>
       )}
@@ -142,16 +166,16 @@ export default function ContractsImport({ allowed }: { allowed: boolean }) {
         </>
       )}
 
-      {!loaded && upload && allowed && (
+      {upload && adding && allowed && (
         <button
           className="btn btn-primary"
-          disabled={!st || store.setup || !!progress}
+          disabled={!st || store.setup || !!progress || !adding.fresh.length}
           onClick={async () => {
-            await store.importContracts(upload, (done, total) => setProgress({ done, total }));
+            if (await store.importContracts(upload, (done, total) => setProgress({ done, total }))) setUpload(null);
             setProgress(null);
           }}
         >
-          {progress ? `Loading… ${n(progress.done)} of ${n(progress.total)} lines` : "Load the contract journal"}
+          {progress ? `Loading… ${n(progress.done)} of ${n(progress.total)} lines` : adding.fresh.length ? `Load ${n(adding.fresh.length)} new lines` : "Nothing new in this file"}
         </button>
       )}
     </section>

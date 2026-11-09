@@ -42,7 +42,7 @@ export interface ImportLot {
 /**
  * A third-party site with stock in XBS and no lines in the file:
  * "empty" = checked, nothing there; "notCounted" = not counted on purpose (too little to count),
- * the XBS figure stands; "open" = still to come (its count or statement), the count can't close.
+ * its lots are differences at 0, carried to the reconciliation as a reconciling item; "open" = still to come (its count or statement), the count can't close.
  */
 export type SiteChoice = "empty" | "notCounted" | "open";
 
@@ -86,7 +86,7 @@ export interface PlannedStack {
   finished?: boolean;
   /** Third party: checked, nothing there. */
   nothing?: boolean;
-  /** Third party: not counted on purpose, the XBS figure stands. */
+  /** Third party: not counted on purpose; its lots are differences at 0, carried to the reconciliation. */
   notCounted?: boolean;
 }
 
@@ -324,7 +324,7 @@ export function planCountImport(csvText: string, countDate: string, sites: Impor
     choices[s.code] = c;
     if (c === "empty") stacks.set(`${s.code}|${WHOLE_SITE}`, { site: s.code, name: WHOLE_SITE, nothing: true, comment: "Checked: nothing to count here (old app count)" });
     if (c === "notCounted")
-      stacks.set(`${s.code}|${WHOLE_SITE}`, { site: s.code, name: WHOLE_SITE, notCounted: true, comment: `Not counted: ${opt.notCountedReason?.trim() || "too little to count"}. The XBS figure stands.`.slice(0, 2000) });
+      stacks.set(`${s.code}|${WHOLE_SITE}`, { site: s.code, name: WHOLE_SITE, notCounted: true, comment: `Not counted: ${opt.notCountedReason?.trim() || "too little to count"}. Its lots go to the reconciliation as a reconciling item.`.slice(0, 2000) });
   }
 
   const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);

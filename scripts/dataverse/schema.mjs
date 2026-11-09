@@ -60,7 +60,9 @@ export const CHOICES = {
       "Not sure, supervisor to check",
     ],
   ],
-  stk_rootcause: ["Root cause", [...ROOT_CAUSES, ...NEW_CAUSES]],
+  // "Third party not counted" (added 4 Nov 2026): a third-party site left uncounted on purpose (too little to
+  // count); its lots are differences at 0, carried to the reconciliation. Appended, so existing values stay.
+  stk_rootcause: ["Root cause", [...ROOT_CAUSES, ...NEW_CAUSES, "Third party not counted"]],
   stk_variancestate: ["Variance state", ["Open", "Recount sent", "Accepted", "Exception raised"]],
   // "Sub-products" (added 29 Oct 2026): ex-office, sweepings and franchise checks. Appended.
   stk_exceptionkind: ["Exception kind", [...ROOT_CAUSES, "Master data", "Third party", "Direct purchase", ...NEW_CAUSES, "Sub-products"]],
@@ -324,6 +326,61 @@ export const TABLES = [
     lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
     keys: [["stk_stocktake", "stk_key"]],
   },
+  // XBS stock transfers and weighbridge tickets (added 4 Nov 2026): the evidence Level 1 quotes on a
+  // weight-loss exception (what was sent, what was posted as received, what the truck weighed). One
+  // copy per report per stock take; Level 1 reads the latest report. Never changed (locked).
+  {
+    name: "stk_transferline", display: "XBS transfer line", plural: "XBS transfer lines", own: "org", primary: ["Name", 100],
+    cols: [
+      ["stk_source", "Source file", s(200)],
+      ["stk_reportedat", "Report generated", dt()],
+      ["stk_rownumber", "Row", int()],
+      ["stk_instruction", "Instruction", s(30)],
+      ["stk_type", "Instruction type", s(100)],
+      ["stk_instructedon", "Instructed on", date()],
+      ["stk_outturn", "Outturn", s(30)],
+      ["stk_batch", "Batch", s(100)],
+      ["stk_grade", "Grade", s(50)],
+      ["stk_fromzone", "From warehouse - zone", s(100)],
+      ["stk_tozone", "Received at warehouse - zone", s(100)],
+      ["stk_instructedkg", "Instructed kg", dec(2)],
+      ["stk_issuedkg", "Issued kg", dec(2)],
+      ["stk_issuedon", "Issued on", date()],
+      ["stk_receivedkg", "Received kg", dec(2)],
+      ["stk_receivedon", "Received on", date()],
+      ["stk_gainkg", "Loss / gain kg", dec(2)],
+      ["stk_missingkg", "Missing bags kg", dec(2)],
+      ["stk_balancekg", "Balance to transfer kg", dec(2)],
+      ["stk_status", "Status", s(30)],
+      ["stk_ticket", "Weighbridge ticket", s(20)],
+      // "<report yyyymmddhhmm>|<row>": short enough for an alternate key.
+      ["stk_key", "Key", s(60)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_key"]],
+  },
+  {
+    name: "stk_weighticket", display: "Weighbridge ticket", plural: "Weighbridge tickets", own: "org", primary: ["Ticket", 100],
+    cols: [
+      ["stk_source", "Source file", s(200)],
+      ["stk_reportedat", "Report generated", dt()],
+      ["stk_type", "Ticket type", s(100)],
+      ["stk_status", "Status", s(30)],
+      ["stk_arrivedon", "Arrived on", date()],
+      // Net Weight: first weight less the truck's tare and the bags' tare - the coffee on the truck.
+      ["stk_netkg", "Net weight kg", dec(2)],
+      // Gross Qty.: the receipts posted on the ticket plus the bags' tare; Variance Qty.: net weight less the receipts.
+      ["stk_grossqtykg", "Gross qty kg", dec(2)],
+      ["stk_variancekg", "Variance kg", dec(2)],
+      ["stk_units", "Units", int()],
+      ["stk_vehicle", "Vehicle", s(30)],
+      ["stk_items", "Items", s(200)],
+      // "<report yyyymmddhhmm>|<ticket>".
+      ["stk_key", "Key", s(60)],
+    ],
+    lookups: [["stk_stocktake", "Stock take", "stk_stocktake", true]],
+    keys: [["stk_stocktake", "stk_key"]],
+  },
   {
     name: "stk_mappingchange", display: "Mapping change", plural: "Mapping changes", own: "user", primary: ["Reference", 30],
     cols: [
@@ -504,9 +561,9 @@ export const TABLES = [
       ["stk_nothinghere", "Nothing to count", bool()],
       // The counter finished a third-party site: every XBS lot there that wasn't counted counts as 0.
       ["stk_sitefinished", "Site finished", bool()],
-      // A third-party site not counted on purpose (too little to count; the comment says why): no
-      // variances there, the XBS figure stands, and it doesn't hold up the count close (added 4 Nov 2026).
-      ["stk_notcounted", "Not counted (XBS figure stands)", bool()],
+      // A third-party site not counted on purpose (too little to count; the comment says why): its
+      // lots are differences at 0 ("Third party not counted"), carried to the reconciliation (added 4 Nov 2026).
+      ["stk_notcounted", "Not counted on purpose", bool()],
     ],
     lookups: [
       ["stk_stocktake", "Stock take", "stk_stocktake", true],

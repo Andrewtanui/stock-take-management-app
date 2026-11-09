@@ -183,6 +183,16 @@
           "entitySetName": "stk_xbsstuffings",
           "logicalName": "stk_xbsstuffing",
           "isHidden": false
+        },
+        "xbstransferlines": {
+          "entitySetName": "stk_transferlines",
+          "logicalName": "stk_transferline",
+          "isHidden": false
+        },
+        "weighbridgetickets": {
+          "entitySetName": "stk_weightickets",
+          "logicalName": "stk_weighticket",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

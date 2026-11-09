@@ -107,13 +107,14 @@ import type {
   XbsImport,
   XbsLine,
 } from "../types";
-import type { AssistantAnswer, DataSource, MgmtData, Signature, Signer, Today, XbsUploadToSave } from "./types";
+import type { AssistantAnswer, ContractJournal, DataSource, MgmtData, Signature, Signer, Today, XbsUploadToSave } from "./types";
 import { assignmentFor, type Plan } from "../allocate";
 import { AUTO_DEFAULTS, priorityFor } from "../auto-decide";
 import { hasLayout, sectionList, sectionRows, sectionsWords } from "../../shared/sections";
 import {
   L1_PDF_SUBJECT,
   addWorkingDays,
+  addEvidence,
   autoDecide,
   closeCountIfDone,
   departmentHeads,
@@ -139,9 +140,13 @@ import type { Kpi } from "../kpi";
 import { Stk_enginerunsService } from "../../generated/services/Stk_enginerunsService";
 import { Stk_contractinvoicesService } from "../../generated/services/Stk_contractinvoicesService";
 import { Stk_contractinvoicesstk_side } from "../../generated/models/Stk_contractinvoicesModel";
-import type { ContractLine, ContractUpload } from "../contracts-parse";
+import { newContractLines, type ContractLine, type ContractUpload } from "../contracts-parse";
 import { Stk_shipmentsService } from "../../generated/services/Stk_shipmentsService";
 import { Stk_xbsstuffingsService } from "../../generated/services/Stk_xbsstuffingsService";
+import { Stk_transferlinesService } from "../../generated/services/Stk_transferlinesService";
+import { Stk_weighticketsService } from "../../generated/services/Stk_weighticketsService";
+import type { TransferUpload } from "../transfers-parse";
+import { planRecountAnswers, type RecountPlan, type RecountSheetRow } from "../recount-import";
 import type { ShipmentLine, ShipmentUpload } from "../shipments-parse";
 import type { XbsStuffing, XbsStuffingUpload } from "../xbs-shipped-parse";
 import { choiceOfType, parseScope, scopeJson, typeFromChoice } from "../scope";
@@ -243,6 +248,10 @@ const LEVEL1_SERVICES: Record<string, { getAll: (o?: IGetAllOptions) => Promise<
   stk_allocationruns: Stk_allocationrunsService,
   stk_engineruns: Stk_enginerunsService,
   annotations: AnnotationsService,
+  // Evidence on weight losses (addEvidence): the XBS transfer and ticket reports, and the comment it adds.
+  stk_transferlines: Stk_transferlinesService,
+  stk_weightickets: Stk_weighticketsService,
+  stk_comments: Stk_commentsService,
 };
 const hubDb: Level1Db = {
   async list<T>(set: string, q: { select: string[]; filter?: string; orderBy?: string[]; top?: number }) {
@@ -321,6 +330,12 @@ async function signedInUser(): Promise<{ id: string; fullName?: string }> {
 /** Stands in for the stock take id in set-up mode: matches no rows. */
 const NO_STOCK_TAKE = "00000000-0000-0000-0000-000000000000";
 
+/** A stock take other than the current one being looked at (by name), read-only; undefined = the current one. */
+let viewName: string | undefined;
+function viewStockTake(name?: string) {
+  viewName = name;
+}
+
 async function load(): Promise<MgmtData> {
   ids.me = (await signedInUser()).id;
 
@@ -335,10 +350,14 @@ async function load(): Promise<MgmtData> {
   // stock-take query return nothing; the pre-count checks read the latest usable import.
   const setup = !stockTakeRows.length;
   const latestImport = importRows.find((r) => ["Imported", "Validating"].includes(label(Stk_xbsimportsstk_status, r.stk_status) ?? ""));
-  const active =
+  const currentRow =
     stockTakeRows.find((r) => label(Stk_stocktakesstk_status, r.stk_status) !== "Completed") ??
     stockTakeRows[0] ??
     ({ stk_stocktakeid: NO_STOCK_TAKE, stk_name: "", _stk_import_value: latestImport?.stk_xbsimportid ?? NO_STOCK_TAKE } as (typeof stockTakeRows)[number]);
+  // A past stock take chosen to look at: everything below reads it instead, and nothing is written.
+  const viewed = viewName ? stockTakeRows.find((r) => r.stk_name === viewName) : undefined;
+  const active = viewed ?? currentRow;
+  viewing = !!viewed && viewed.stk_stocktakeid !== currentRow.stk_stocktakeid;
   ids.stockTakeId = active.stk_stocktakeid;
   ids.stockTakeType = active.stk_type == null ? undefined : typeFromChoice(label(Stk_stocktakesstk_type, active.stk_type));
   for (const r of stockTakeRows) ids.stockTake.set(r.stk_name, r.stk_stocktakeid);
@@ -401,6 +420,17 @@ async function load(): Promise<MgmtData> {
     return [];
   })) as unknown as ShipmentRow[];
   // XBS stuffing dates (shipped reports) loaded for this stock take, if any.
+  // XBS stock transfer and weighbridge ticket reports loaded for this stock take (which files, how many rows).
+  const reportOf = async (kind: "transfers" | "tickets") =>
+    ((await all(
+      (o) => transferService(kind).getAll(o),
+      { select: ["stk_source", "stk_reportedat"] as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` },
+      `read the XBS ${kind === "transfers" ? "stock transfer" : "ticket"} reports`,
+    ).catch((e: unknown) => {
+      console.warn("XBS transfer / ticket reports not read:", e);
+      return [];
+    })) as unknown as { stk_source?: string; stk_reportedat?: string }[]).map((r) => ({ kind, file: r.stk_source ?? "", reportedAt: r.stk_reportedat }));
+  const transferRows = [...(await reportOf("transfers")), ...(await reportOf("tickets"))];
   const stuffingRows = (await all(
     (o) => Stk_xbsstuffingsService.getAll(o),
     { select: STUFFING_SELECT as never, filter: `_stk_stocktake_value eq ${active.stk_stocktakeid}` },
@@ -520,7 +550,10 @@ async function load(): Promise<MgmtData> {
   const ctx: Level1Ctx = { stockTakeId: ids.stockTakeId, dueDays: l1.dueDays, owners: departmentHeads(settingRows, peopleRows) };
   const submittedBy = new Map((stackRows as unknown as StackRow[]).map((r) => [r.stk_stackid, r._stk_submittedby_value]));
   // With Level1Runs = Engine the server engine writes Level 1 and the Hub only reads (unless the engine is silent).
-  const runner = await level1Runner(hubDb, l1.runs).catch(() => ({ runs: l1.runs, hubRuns: true, lastRun: undefined }));
+  // Looking at a past stock take: Level 1 is read, never run.
+  const runner = viewing
+    ? { runs: l1.runs, hubRuns: false, lastRun: undefined }
+    : await level1Runner(hubDb, l1.runs).catch(() => ({ runs: l1.runs, hubRuns: true, lastRun: undefined }));
   const drafts = draftVariances(facts, lines, submittedStacks, thirdParty, siteShort, emptySites);
   if (runner.hubRuns) await syncVariances(hubDb, ctx, drafts, stackRows as unknown as StackRow[], countRows as unknown as LineRow[], siteIdOf, thirdParty);
 
@@ -532,6 +565,8 @@ async function load(): Promise<MgmtData> {
     await autoDecide(hubDb, ctx, facts, countRows as unknown as LineRow[], thirdParty, siteCode, siteShort, l1.auto, allocation).catch((e: unknown) =>
       console.warn("Automatic variance decisions skipped:", e),
     );
+  // Evidence on weight-loss exceptions from the XBS transfer and ticket reports, when loaded.
+  if (runner.hubRuns) await addEvidence(hubDb, ctx, sites).catch((e: unknown) => console.warn("Evidence on weight losses skipped:", e));
 
   const [varianceRows, exceptionRows] = await Promise.all([
     all(
@@ -953,7 +988,8 @@ async function load(): Promise<MgmtData> {
     site: siteCode.get(r._stk_site_value!)!,
     name: r.stk_name,
     status: label(Stk_stacksstk_status, r.stk_status) ?? "In progress",
-    empty: !!(r as { stk_nothinghere?: boolean }).stk_nothinghere,
+    // Reported empty, or not counted on purpose: either way the site is in and its XBS lots compare with 0.
+    empty: !!(r as { stk_nothinghere?: boolean }).stk_nothinghere || !!(r as { stk_notcounted?: boolean }).stk_notcounted,
   }));
 
   /* Level 1 closes on its own once counting is finished (close-count.ts). */
@@ -985,13 +1021,17 @@ async function load(): Promise<MgmtData> {
     stacks,
     countClose,
     assistant: (settingRows.find((x) => x.stk_name === "AssistantEnabled")?.stk_value ?? "").trim().toLowerCase() === "true",
-    contractJournal: contractRows.length
-      ? { file: contractRows[0].stk_source ?? "537", at: stamp(contractRows[0].createdon), by: nm(contractRows[0]._createdby_value), lines: contractRows.map(contractLineOf) }
-      : undefined,
+    contractJournal: contractRows.length ? contractJournalOf(contractRows, nm) : undefined,
     shipments: shipmentRows.length
       ? { file: shipmentRows[0].stk_source ?? "Shipment tracker", at: stamp(shipmentRows[0].createdon), by: nm(shipmentRows[0]._createdby_value), lines: shipmentRows.map(shipmentLineOf) }
       : undefined,
     subProducts: subRows.length ? subProductsOf(subRows) : undefined,
+    transferReports: transferRows.length
+      ? [...new Map(transferRows.map((r) => [`${r.kind}|${r.reportedAt}|${r.file}`, r])).values()].map((r) => ({
+          ...r,
+          rows: transferRows.filter((x) => x.kind === r.kind && x.reportedAt === r.reportedAt && x.file === r.file).length,
+        }))
+      : undefined,
     xbsStuffing: stuffingRows.length ? { files: [...new Set(stuffingRows.map((r) => r.stk_source ?? "XBS shipped report"))], rows: stuffingRows.map(stuffingOf) } : undefined,
     afloatAgeingDays: ageingDays(settingRows.find((x) => x.stk_name === "AfloatAgeingDays")?.stk_value),
     thirdPartyAgeingDays: ageingDays(settingRows.find((x) => x.stk_name === "ThirdPartyAgeingDays")?.stk_value),
@@ -1023,6 +1063,9 @@ async function load(): Promise<MgmtData> {
       comtras: comtrasRows.length ? comtrasPosition(comtrasRows, nm) : undefined,
     },
     stockTakes,
+    activeStockTake: active.stk_name || undefined,
+    currentStockTake: currentRow.stk_name || undefined,
+    viewing,
     sheets,
     variances,
     exceptions,
@@ -1730,15 +1773,42 @@ const contractLineOf = (r: ContractRow): ContractLine => ({
   sellValue: Number(r.stk_sellvalue ?? 0),
 });
 
-/** The 537 is a snapshot like XBS and the P526: loaded once per stock take, never changed. */
+/** Each 537 file's rows are numbered file x 1,000,000 + row in the file (the first file loaded is 0). */
+const FILE_ROWS = 1_000_000;
+
+/** The stock take's 537 lines, one or more files (afloat needs the look-back: the month of the count and the two before). */
+function contractJournalOf(rows: ContractRow[], nm: (id?: string) => string): ContractJournal {
+  const files = [...new Set(rows.map((r) => Math.floor((r.stk_rownumber ?? 0) / FILE_ROWS)))].sort((a, b) => a - b).map((seq) => {
+    const mine = rows.filter((r) => Math.floor((r.stk_rownumber ?? 0) / FILE_ROWS) === seq);
+    const days = mine.map((r) => (r.stk_bookedon ?? "").slice(0, 10)).filter(Boolean).sort();
+    const first = mine.reduce((m, r) => ((r.createdon ?? "") < (m.createdon ?? "") ? r : m), mine[0]);
+    return { file: first.stk_source ?? "537", created: first.createdon ?? "", at: stamp(first.createdon), by: nm(first._createdby_value), lines: mine.length, from: days[0], to: days[days.length - 1] };
+  });
+  const last = files.reduce((m, f) => (f.created > m.created ? f : m), files[0]);
+  return { file: files.map((f) => f.file).join(" + "), at: last.at, by: last.by, lines: rows.map(contractLineOf), files: files.map(({ created: _c, ...f }) => f) };
+}
+
+/**
+ * A 537 file for the active stock take. More than one can be loaded (one month's export each): lines
+ * already loaded from another file are skipped (newContractLines), and each file's rows get their own
+ * number range. Snapshots are never changed; a load that stopped part way is finished with the same file.
+ */
 async function importContracts(u: ContractUpload, onProgress?: (done: number, total: number) => void) {
   if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Start the stock take first; the contract journal is loaded for it.");
-  const already = await all((o) => Stk_contractinvoicesService.getAll(o), { select: ["stk_name"], filter: `_stk_stocktake_value eq ${ids.stockTakeId}`, top: 1 }, "check the contract journal");
-  if (already.length) throw new Error("A 537 contract journal is already loaded for this stock take. Comtras snapshots are never re-imported or changed.");
+  const saved = (await all((o) => Stk_contractinvoicesService.getAll(o), { select: CONTRACT_SELECT as never, filter: `_stk_stocktake_value eq ${ids.stockTakeId}` }, "check the contract journal")) as unknown as ContractRow[];
+  const seqOf = (r: ContractRow) => Math.floor((r.stk_rownumber ?? 0) / FILE_ROWS);
+  const name = u.file.slice(0, 200);
+  const mine = saved.filter((r) => r.stk_source === name);
+  const seq = mine.length ? seqOf(mine[0]) : saved.length ? Math.max(...saved.map(seqOf)) + 1 : 0;
+  const others = saved.filter((r) => seqOf(r) !== seq).map(contractLineOf);
+  const { fresh } = newContractLines(u.lines, others);
+  const have = new Set(mine.map((r) => r.stk_rownumber));
+  const queue = fresh.filter((l) => !have.has(seq * FILE_ROWS + l.row));
+  if (!queue.length) throw new Error(fresh.length ? `${u.file} is already loaded for this stock take.` : `Every line of ${u.file} is already loaded from another file.`);
   const d = (iso?: string) => iso || null;
   const r2 = (x: number) => Math.round(x * 100) / 100;
+  const total = queue.length;
   let done = 0;
-  const queue = [...u.lines];
   // A few at a time: 900+ lines one by one take minutes. Stock take + row number is a key, so a resent line is never doubled.
   await Promise.all(
     Array.from({ length: 6 }, async () => {
@@ -1746,8 +1816,8 @@ async function importContracts(u: ContractUpload, onProgress?: (done: number, to
         const res = await Stk_contractinvoicesService.create({
           stk_name: `${l.voucher} · ${l.counterparty}`.slice(0, 100),
           statecode: 0,
-          stk_rownumber: l.row,
-          stk_source: u.file.slice(0, 200),
+          stk_rownumber: seq * FILE_ROWS + l.row,
+          stk_source: name,
           stk_side: code(Stk_contractinvoicesstk_side, l.side),
           stk_account: l.account.slice(0, 20),
           stk_counterparty: l.counterparty.slice(0, 60),
@@ -1771,7 +1841,7 @@ async function importContracts(u: ContractUpload, onProgress?: (done: number, to
           "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId),
         } as never);
         if (!res.success && !isDuplicateKey(res.error)) unwrap(res, `save 537 line ${l.row}`);
-        onProgress?.(++done, u.lines.length);
+        onProgress?.(++done, total);
       }
     }),
   );
@@ -2037,6 +2107,108 @@ async function planCounts(csvText: string, opt: ImportOptions): Promise<CountPre
  * (CS-OLD-<site>), the stacks submitted, the lines keyed "old-<stock take>-<CSV line>". A load that
  * stopped part way is finished with the same file: sheets, stacks and lines already there are reused.
  */
+/* ---------- blind recount sheet: the warehouse's answers ---------- */
+
+type RecountRowDv = { stk_recountid: string; stk_name: string; stk_outturn?: string; stk_batch?: string; stk_status?: number; _stk_stack_value?: string };
+
+/** The active stock take's recounts with their stacks and the packing of their first count. */
+async function recountInputs() {
+  const st = ids.stockTakeId;
+  if (!st || st === NO_STOCK_TAKE) throw new Error("Start the stock take first.");
+  const [recounts, stacks, packs] = await Promise.all([
+    all((o) => Stk_recountsService.getAll(o), { select: ["stk_recountid", "stk_name", "stk_outturn", "stk_batch", "stk_status", "_stk_stack_value"] as never, filter: `_stk_stocktake_value eq ${st}` }, "read the recounts") as unknown as Promise<RecountRowDv[]>,
+    all((o) => Stk_stacksService.getAll(o), { select: ["stk_stackid", "stk_name", "_stk_site_value"] as never, filter: `_stk_stocktake_value eq ${st}` }, "read the stacks") as unknown as Promise<{ stk_stackid: string; stk_name: string; _stk_site_value?: string }[]>,
+    all((o) => Stk_packtypesService.getAll(o), { select: ["stk_packtypeid", "stk_kgperbag"] as never }, "read packing types") as unknown as Promise<{ stk_packtypeid: string; stk_kgperbag?: number }[]>,
+  ]);
+  const sheets = (await all((o) => Stk_countsheetsService.getAll(o), { select: ["stk_countsheetid", "_stk_site_value"] as never, filter: `_stk_stocktake_value eq ${st}` }, "read the count sheets")) as unknown as { stk_countsheetid: string; _stk_site_value?: string }[];
+  // First-count lines on the recounts' stacks: their packing (50 or 60 kg) and grade.
+  const stackIds = [...new Set(recounts.map((r) => r._stk_stack_value).filter((x): x is string => !!x))];
+  const lines: { stk_batch?: string; stk_grade?: string; _stk_stack_value?: string; _stk_packtype_value?: string; _stk_recount_value?: string; _stk_xbsline_value?: string }[] = [];
+  for (const chunk of chunks(stackIds, 15))
+    lines.push(...((await all((o) => Stk_countlinesService.getAll(o), { select: ["stk_batch", "stk_grade", "_stk_stack_value", "_stk_packtype_value", "_stk_recount_value", "_stk_xbsline_value"] as never, filter: orFilter("_stk_stack_value", chunk) }, "read the first counts")) as unknown as typeof lines));
+  const kgOf = new Map(packs.map((p) => [p.stk_packtypeid, Number(p.stk_kgperbag ?? 60)]));
+  const first = (r: RecountRowDv) => lines.find((l) => !l._stk_recount_value && l._stk_stack_value === r._stk_stack_value && l.stk_batch === r.stk_batch);
+  return { recounts, stacks, packs, sheets, first, kgOf };
+}
+
+/** Reads the returned recount sheet against the active stock take's recounts (writes nothing). */
+async function planRecounts(rows: RecountSheetRow[]): Promise<RecountPlan> {
+  const { recounts, stacks, first, kgOf } = await recountInputs();
+  const open = code(Stk_recountsstk_status, "Open");
+  return planRecountAnswers(
+    rows,
+    recounts.map((r) => {
+      const f = first(r);
+      return {
+        id: r.stk_recountid,
+        name: r.stk_name,
+        outturn: r.stk_outturn ?? "",
+        stack: stacks.find((x) => x.stk_stackid === r._stk_stack_value)?.stk_name ?? "",
+        open: r.stk_status === open,
+        packKg: f?._stk_packtype_value && kgOf.get(f._stk_packtype_value) === 50 ? 50 : 60,
+      };
+    }),
+  );
+}
+
+/**
+ * Saves the warehouse's answers the way the counter app saves a blind recount: one count line per
+ * recount, flagged blind and linked to it, on its stack; then the recount is Done. Each line is keyed
+ * by its R-number, so a sheet loaded twice answers nothing twice. Level 1 settles them on the next load.
+ */
+async function importRecounts(plan: RecountPlan, file: string, onProgress?: (done: number, total: number) => void) {
+  if (plan.errors.length) throw new Error(`${plan.errors.length} row(s) of the sheet can't be loaded. Fix the sheet first.`);
+  if (!plan.answers.length) throw new Error("Nothing to load: no answered recount on the sheet.");
+  const st = ids.stockTakeId;
+  const { recounts, stacks, packs, sheets, first, kgOf } = await recountInputs();
+  const take = unwrap(await Stk_stocktakesService.get(st, { select: ["stk_status", "_stk_import_value"] } as never), "read the stock take") as unknown as { stk_status?: number; _stk_import_value?: string };
+  if (label(Stk_stocktakesstk_status, take.stk_status) !== "Count in progress") throw new Error("The stock take isn't in Count in progress; recounts can't be answered.");
+  const xbs = (await all((o) => Stk_xbslinesService.getAll(o), { select: ["stk_xbslineid", "stk_name", "stk_zone", "stk_grade", "stk_stocktype", "_stk_site_value"] as never, filter: `_stk_import_value eq ${take._stk_import_value}` }, "read XBS")) as unknown as { stk_xbslineid: string; stk_name: string; stk_zone?: string; stk_grade?: string; stk_stocktype?: number; _stk_site_value?: string }[];
+  const packId = (kg: number) => packs.find((p) => Number(p.stk_kgperbag) === kg)?.stk_packtypeid;
+  const tag = `rc-${st.slice(0, 8)}-`;
+  let done = 0;
+  for (const a of plan.answers) {
+    const r = recounts.find((x) => x.stk_recountid === a.recountId);
+    const stack = stacks.find((x) => x.stk_stackid === r?._stk_stack_value);
+    if (!r || !stack?._stk_site_value) throw new Error(`${a.recount}: its stack isn't in this stock take.`);
+    const sheet = sheets.find((x) => x._stk_site_value === stack._stk_site_value)?.stk_countsheetid;
+    if (!sheet) throw new Error(`${a.recount}: no count sheet for its warehouse in this stock take.`);
+    const f = first(r);
+    const x = xbs.find((l) => l.stk_name === r.stk_batch && l._stk_site_value === stack._stk_site_value && l.stk_zone === stack.stk_name);
+    const pack = packId(a.packKg) ?? (f?._stk_packtype_value && kgOf.has(f._stk_packtype_value) ? f._stk_packtype_value : undefined);
+    if (!pack) throw new Error(`The ${a.packKg} kg packing type is missing in Set-up.`);
+    const res = await Stk_countlinesService.create({
+      stk_name: `${a.outturn} @ ${stack.stk_name}`.slice(0, 60),
+      statecode: 0,
+      stk_clientid: `${tag}${a.recount}`.slice(0, 40),
+      stk_outturn: a.outturn,
+      stk_batch: r.stk_batch ?? `FOUND:${a.outturn}`,
+      stk_grade: (x?.stk_grade ?? f?.stk_grade ?? "").slice(0, 30),
+      stk_category: code(Stk_countlinesstk_category, x?.stk_stocktype === 614500001 ? "Processing stock" : "Current stock"),
+      stk_bags: a.fullBags,
+      stk_pocketbags: a.pocketKg > 0 ? 1 : 0,
+      stk_pocketkg: Math.round(a.pocketKg * 100) / 100,
+      stk_units: a.units,
+      stk_kg: a.kg,
+      stk_bags60: Math.round((a.kg / 60) * 100) / 100,
+      stk_isfound: false,
+      stk_isother: false,
+      stk_isblind: true,
+      stk_countedon: a.at ?? new Date().toISOString(),
+      stk_note: `Recount sheet (${file}): ${a.notFound ? "not found" : `${a.fullBags} full bags, pocket ${a.pocketKg} kg, ${a.kg} kg`}${a.by ? `, recounted by ${a.by}` : ""}${a.comment ? `. ${a.comment}` : ""}.`.slice(0, 2000),
+      "stk_countsheet@odata.bind": bind("stk_countsheets", sheet),
+      "stk_stack@odata.bind": bind("stk_stacks", stack.stk_stackid),
+      "stk_site@odata.bind": bind("stk_sites", stack._stk_site_value),
+      "stk_packtype@odata.bind": bind("stk_packtypes", pack),
+      "stk_recount@odata.bind": bind("stk_recounts", r.stk_recountid),
+      ...(x ? { "stk_xbsline@odata.bind": bind("stk_xbslines", x.stk_xbslineid) } : {}),
+    } as never);
+    if (!res.success && !isDuplicateKey(res.error)) unwrap(res, `save the answer to ${a.recount}`);
+    unwrap(await Stk_recountsService.update(r.stk_recountid, { stk_status: code(Stk_recountsstk_status, "Done") } as never), `close ${a.recount}`);
+    onProgress?.(++done, plan.answers.length);
+  }
+}
+
 async function importCounts(plan: CountImportPlan, file: string, onProgress?: (done: number, total: number) => void) {
   const { take, siteRows } = await countImportInputs();
   if (label(Stk_stocktakesstk_status, take.stk_status) !== "Count in progress") throw new Error(`${take.stk_name} isn't in Count in progress; the count can't be loaded into it.`);
@@ -2196,6 +2368,87 @@ async function importXbsStuffing(u: XbsStuffingUpload, onProgress?: (done: numbe
           unwrap(res, `save XBS stuffing ${x.salesContract}`);
         }
         onProgress?.(++done, u.rows.length);
+      }
+    }),
+  );
+}
+
+/** Both report tables are written the same way (same shared columns): one service type for either. */
+const transferService = (kind: "transfers" | "tickets") =>
+  (kind === "transfers" ? Stk_transferlinesService : Stk_weighticketsService) as unknown as typeof Stk_transferlinesService;
+
+/**
+ * XBS's stock transfer or ticket report for the active stock take. Each report is a copy keyed by its
+ * time; a load that stopped part way is finished with the same file (rows already saved are skipped).
+ */
+async function importTransfers(u: TransferUpload, onProgress?: (done: number, total: number) => void) {
+  if (!ids.stockTakeId || ids.stockTakeId === NO_STOCK_TAKE) throw new Error("Start the stock take first; the transfer and ticket reports are loaded for it.");
+  if (!u.reportedAt) throw new Error(`${u.file}: can't tell when XBS produced it (no "Report Generated On" and no time in the file name).`);
+  const t = new Date(u.reportedAt);
+  const stampOf = `${t.getUTCFullYear()}${pad2(t.getUTCMonth() + 1)}${pad2(t.getUTCDate())}${pad2(t.getUTCHours())}${pad2(t.getUTCMinutes())}`;
+  const service = transferService(u.kind);
+  const saved = (await all((o) => service.getAll(o), { select: ["stk_key"] as never, filter: `_stk_stocktake_value eq ${ids.stockTakeId}` }, "check the loaded reports")) as unknown as { stk_key?: string }[];
+  const have = new Set(saved.map((r) => r.stk_key));
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const st = { "stk_stocktake@odata.bind": bind("stk_stocktakes", ids.stockTakeId) };
+  const base = { statecode: 0, stk_source: u.file.slice(0, 200), stk_reportedat: u.reportedAt };
+  const rows: { key: string; body: Record<string, unknown> }[] =
+    u.kind === "transfers"
+      ? u.transfers.map((x) => ({
+          key: `${stampOf}|${x.row}`,
+          body: {
+            ...base,
+            stk_name: `${x.instruction} · ${x.batch}`.slice(0, 100),
+            stk_rownumber: x.row,
+            stk_instruction: x.instruction.slice(0, 30),
+            stk_type: x.type.slice(0, 100),
+            stk_instructedon: x.instructedOn ?? null,
+            stk_outturn: x.outturn.slice(0, 30),
+            stk_batch: x.batch.slice(0, 100),
+            stk_grade: x.grade.slice(0, 50),
+            stk_fromzone: x.fromZone.slice(0, 100),
+            stk_tozone: x.toZone.slice(0, 100),
+            stk_instructedkg: r2(x.instructedKg),
+            stk_issuedkg: r2(x.issuedKg),
+            stk_issuedon: x.issuedOn ?? null,
+            stk_receivedkg: r2(x.receivedKg),
+            stk_receivedon: x.receivedOn ?? null,
+            stk_gainkg: r2(x.gainKg),
+            stk_missingkg: r2(x.missingKg),
+            stk_balancekg: r2(x.balanceKg),
+            stk_status: x.status.slice(0, 30),
+            stk_ticket: x.ticket ?? null,
+          },
+        }))
+      : u.tickets.map((x) => ({
+          key: `${stampOf}|${x.ticket}`,
+          body: {
+            ...base,
+            stk_name: x.ticket.slice(0, 100),
+            stk_type: x.type.slice(0, 100),
+            stk_status: x.status.slice(0, 30),
+            stk_arrivedon: x.arrivedOn ?? null,
+            stk_netkg: r2(x.netKg),
+            stk_grossqtykg: r2(x.grossQtyKg),
+            stk_variancekg: r2(x.varianceKg),
+            stk_units: Math.round(x.units),
+            stk_vehicle: x.vehicle.slice(0, 30),
+            stk_items: x.items.join(",").slice(0, 200),
+          },
+        }));
+  const queue = rows.filter((r) => !have.has(r.key));
+  if (!queue.length) throw new Error(`${u.file} is already loaded for this stock take.`);
+  let done = rows.length - queue.length;
+  let failed = false;
+  await Promise.all(
+    Array.from({ length: 6 }, async () => {
+      for (let x = queue.shift(); x && !failed; x = queue.shift()) {
+        const res = await service.create({ ...x.body, stk_key: x.key, ...st } as never);
+        if (!res.success && !isDuplicateKey(res.error)) {
+          failed = true;
+          unwrap(res, `save ${u.file} row ${x.key}`);
+        }
+        onProgress?.(++done, rows.length);
       }
     }),
   );
@@ -2473,7 +2726,7 @@ function parseSigners(json?: string | null): Partial<Record<Gate, Signer>> {
 let loading: Promise<MgmtData> | undefined;
 const loadOnce = () => (loading ??= load().finally(() => (loading = undefined)));
 
-export const dataverseSource: DataSource = {
+const writable: DataSource = {
   getL1Pdf,
   saveKpis,
   askAssistant,
@@ -2486,10 +2739,13 @@ export const dataverseSource: DataSource = {
   importContracts,
   importShipments,
   importXbsStuffing,
+  importTransfers,
   importSubProducts,
   importDirectLots,
   planCounts,
   importCounts,
+  planRecounts,
+  importRecounts,
   addReconItem,
   removeReconItem,
   addComment,
@@ -2507,4 +2763,23 @@ export const dataverseSource: DataSource = {
   photo,
   addDirectPurchase,
   addSignoff,
+  viewStockTake,
 };
+
+/** While a past stock take is being looked at (viewing), every action that writes is refused. */
+let viewing = false;
+const READS = new Set(["kind", "load", "viewStockTake", "getL1Pdf", "askAssistant", "planCounts", "photo"]);
+export const dataverseSource: DataSource = Object.fromEntries(
+  Object.entries(writable).map(([k, f]) => [
+    k,
+    typeof f !== "function" || READS.has(k)
+      ? f
+      : k === "saveKpis"
+        ? (...a: unknown[]) => (viewing ? Promise.resolve() : (f as (...x: unknown[]) => unknown)(...a))
+        : (...a: unknown[]) =>
+            viewing
+              ? Promise.reject(new Error("You're looking at a past stock take: it's read-only. Go back to the current stock take to make changes."))
+              : (f as (...x: unknown[]) => unknown)(...a),
+  ]),
+) as unknown as DataSource;
+

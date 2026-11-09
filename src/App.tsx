@@ -84,7 +84,7 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
-  const current = store.stockTakes[0];
+  const current = store.stockTake ?? store.stockTakes[0];
   const pendingSheets = store.sheets.filter((s) => s.status === "Submitted").length;
   const openVar = store.variances.filter((v) => v.state === "open").length;
   const overdue = store.exceptions.filter((e) => e.status !== "Closed" && e.dueDays < 0).length;
@@ -188,7 +188,7 @@ export default function App() {
 
         <aside className={"rail" + (menu ? " rail-open" : "")} aria-label="Main">
           <button className="rail-st" onClick={() => go(current ? "stocktakes" : "import")}>
-            <span className="rail-st-label">Current stock take</span>
+            <span className="rail-st-label">{store.viewing ? "Looking at (read-only)" : "Current stock take"}</span>
             <span className="rail-st-name">
               {current ? `${shortType(current.type)} · ${current.countDate.replace(/^\w+ /, "")}` : "None yet"}
             </span>
@@ -202,6 +202,18 @@ export default function App() {
               <span style={{ width: `${(TODAY.signOffDay / TODAY.signOffTarget) * 100}%` }} />
             </span>
           </button>
+          {store.stockTakes.length > 1 && (
+            <label className="rail-pick">
+              <span>Show stock take</span>
+              <select value={store.activeStockTake} onChange={(e) => store.viewStockTake(e.target.value)}>
+                {store.stockTakes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {shortType(s.type)} · {s.countDate.replace(/^\w+ /, "")} · {s.id === store.currentStockTake ? "current" : s.status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <nav>
             {groups.map((g) => (
               <div key={g.label} className="nav-group">
@@ -228,6 +240,17 @@ export default function App() {
         </aside>
 
         <main className="main">
+          {store.viewing && (
+            <div className="callout callout-info view-banner" role="status">
+              <span>
+                <strong>Looking at {store.stockTake?.title}</strong> ({store.stockTake?.status}). Every page shows this stock take; it's read-only, so
+                nothing can be changed and Level 1 doesn't run.{" "}
+                <button className="link" onClick={() => store.viewStockTake(undefined)}>
+                  Back to the current stock take
+                </button>
+              </span>
+            </div>
+          )}
           {store.setup && (
             <div className="callout callout-warn setup-banner" role="status">
               <span>

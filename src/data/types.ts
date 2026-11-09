@@ -122,7 +122,7 @@ export interface StackInfo {
   site: SiteCode;
   name: string;
   status: string;
-  /** A third-party site the counter reported as having nothing to count. */
+  /** A third-party site with nothing counted on purpose: reported empty, or not counted (too little to count). Its XBS lots compare with 0. */
   empty?: boolean;
 }
 
@@ -153,6 +153,7 @@ export type RootCause =
   | "Partial delivery: rest still at third party"
   | "Weight loss: claim from warehouse"
   | "Posting timing / late posting"
+  | "Third party not counted"
   | "Not yet known";
 
 export interface Variance {

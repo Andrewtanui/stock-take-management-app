@@ -23,7 +23,7 @@ export default function XbsCorrections() {
     ibero,
     contracts,
   });
-  const stockTake = store.stockTakes.find((s) => s.status !== "Completed")?.title ?? store.stockTakes[0]?.title ?? "Stock take";
+  const stockTake = store.stockTake?.title ?? "Stock take";
   const counts = CORRECTION_ACTIONS.map((a) => ({ a, k: rows.filter((r) => r.action === a).length })).filter((x) => x.k);
 
   const download = () =>

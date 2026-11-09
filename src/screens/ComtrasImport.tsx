@@ -12,7 +12,7 @@ export default function ComtrasImport({ allowed }: { allowed: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const loaded = store.comtras;
   const lines = loaded?.lines ?? upload?.lines ?? [];
   const t = bricTotals(lines);

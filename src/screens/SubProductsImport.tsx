@@ -18,7 +18,7 @@ export default function SubProductsImport({ allowed }: { allowed: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const loaded = store.subProducts;
   const cutOff = store.kpiCountDate;
   const book = loaded && cutOff ? subProductBook(loaded.rows, cutOff) : undefined;

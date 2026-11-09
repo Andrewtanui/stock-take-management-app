@@ -12,7 +12,7 @@ const TONE: Record<string, Tone> = { "Count in progress": "info", Reconciliation
 export default function StockTakes() {
   const store = useStore();
   const [filter, setFilter] = useState<"all" | "mine" | "open">("all");
-  const [sel, setSel] = useState(store.stockTakes[0]?.id ?? "");
+  const [sel, setSel] = useState(store.activeStockTake || store.stockTakes[0]?.id || "");
   const [creating, setCreating] = useState(false);
   const [closing, setClosing] = useState(false);
   const allowed = can(store.role, "Create and close stock takes");
@@ -95,7 +95,19 @@ export default function StockTakes() {
             <dt>Created by</dt>
             <dd>{st.createdBy}</dd>
           </dl>
-          {st.status !== "Completed" && allowed && (
+          <div className="btn-row">
+            {st.id !== store.activeStockTake ? (
+              <button className="btn btn-primary" onClick={() => store.viewStockTake(st.id)}>
+                {st.id === store.currentStockTake ? "Back to this stock take" : "View this stock take"}
+              </button>
+            ) : (
+              <Chip tone="info">{store.viewing ? "On screen now (read-only)" : "On screen now"}</Chip>
+            )}
+          </div>
+          {st.id !== store.currentStockTake && st.id !== store.activeStockTake && (
+            <p className="muted small">Opens every page on {st.title}, read-only: its counts, variances, reconciliation, exceptions and sign-off as they were.</p>
+          )}
+          {st.status !== "Completed" && allowed && !store.viewing && (
             <>
               <button className="btn" disabled={!allSigned} onClick={() => setClosing(true)}>
                 Close stock take

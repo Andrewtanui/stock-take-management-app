@@ -5,6 +5,7 @@ import { useStore } from "../data/store";
 import type { CountPreview, SiteChoice } from "../data/count-import";
 import type { SiteCode } from "../data/types";
 import { Chip, PageHead, ReadOnly, Stat, n } from "../ui/kit";
+import RecountImport from "./RecountImport";
 
 const CHOICES: { value: SiteChoice; label: string }[] = [
   { value: "open", label: "Still to come" },
@@ -13,7 +14,7 @@ const CHOICES: { value: SiteChoice; label: string }[] = [
 ];
 const CHOICE_HINT: Record<SiteChoice, string> = {
   open: "Not counted yet: its count or statement is still to come; the count can't close until it's in.",
-  notCounted: "Not counted on purpose: no variances there, its XBS figure stands and the Level 1 summary says so.",
+  notCounted: "Not counted on purpose: its lots are differences at 0, accepted automatically and carried to the reconciliation as a reconciling item.",
   empty: "Checked, nothing there: someone checked and found it empty: every lot XBS has there is judged as counted 0.",
 };
 
@@ -39,7 +40,7 @@ export default function CountImport() {
   const [reason, setReason] = useState("too little to count");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const short = (c: SiteCode) => store.sites.find((x) => x.code === c)?.short ?? c;
 
   const read = async (f: { name: string; text: string }, ch: typeof choices, why: string) => {
@@ -302,6 +303,8 @@ export default function CountImport() {
           )}
         </section>
       )}
+
+      <RecountImport allowed={allowed} />
     </div>
   );
 }

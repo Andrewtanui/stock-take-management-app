@@ -16,7 +16,7 @@ export default function ShipmentsImport({ allowed }: { allowed: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const loaded = store.shipments;
   // A load that stopped part way: the same file chosen again has more rows than were saved.
   const partial = !!loaded && !!upload && upload.file === loaded.file && upload.lines.length > loaded.lines.length;

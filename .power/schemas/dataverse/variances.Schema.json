@@ -274,7 +274,8 @@
             "Not yet known",
             "Partial delivery: rest still at third party",
             "Weight loss: claim from warehouse",
-            "Posting timing / late posting"
+            "Posting timing / late posting",
+            "Third party not counted"
           ],
           "x-ms-enum-values": [
             614500000,
@@ -289,9 +290,11 @@
             614500009,
             614500010,
             614500011,
-            614500012
+            614500012,
+            614500013
           ],
           "Color": [
+            null,
             null,
             null,
             null,
@@ -558,7 +561,8 @@
             "Not yet known",
             "Partial delivery: rest still at third party",
             "Weight loss: claim from warehouse",
-            "Posting timing / late posting"
+            "Posting timing / late posting",
+            "Third party not counted"
           ],
           "x-ms-enum-values": [
             614500000,
@@ -573,9 +577,11 @@
             614500009,
             614500010,
             614500011,
-            614500012
+            614500012,
+            614500013
           ],
           "Color": [
+            null,
             null,
             null,
             null,

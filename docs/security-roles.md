@@ -29,6 +29,8 @@ Append/AppendTo follow automatically. Every user also needs the built-in **Basic
 | `stk_directlot` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_xbsstuffing` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_subproduct` 🔒 |  | R | R | R | R | R | CR | R | R |
+| `stk_transferline` 🔒 |  | R | R | R | R | R | CR | R | R |
+| `stk_weighticket` 🔒 |  | R | R | R | R | R | CR | R | R |
 | `stk_mappingchange` |  | R · CW (own) | R | R · CW (own) | CRW | R |  | R | R |
 | `stk_basketmap` | R | R | R | R | CRW | R |  | R | R |
 | `stk_outturnmap` | R | R | R | R | CRW | R |  | R | R |

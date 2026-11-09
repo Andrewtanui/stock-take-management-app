@@ -196,6 +196,16 @@
           "entitySetName": "stk_subproducts",
           "logicalName": "stk_subproduct",
           "isHidden": false
+        },
+        "xbstransferlines": {
+          "entitySetName": "stk_transferlines",
+          "logicalName": "stk_transferline",
+          "isHidden": false
+        },
+        "weighbridgetickets": {
+          "entitySetName": "stk_weightickets",
+          "logicalName": "stk_weighticket",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

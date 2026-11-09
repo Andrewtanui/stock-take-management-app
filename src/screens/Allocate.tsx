@@ -46,7 +46,7 @@ function AllocateTab() {
   const store = useStore();
   const allowed = can(store.role, "Allocate counters");
   const { profiles, runs, rules, lastAreas } = store.allocation;
-  const st = store.stockTakes.find((s) => s.status !== "Completed");
+  const st = store.stockTake;
   const published = runs.find((r) => r.status === "Published");
   const active = profiles.filter((p) => p.active);
   const [present, setPresent] = useState<Set<string>>(() => new Set(published?.present.length ? published.present : active.map((p) => p.userId)));

@@ -1,13 +1,22 @@
 # Dataverse schema — IBKY Stock Take
 
 Status: **live in the development environment** (built 9 Oct 2026, last changed
-2 Nov 2026: table 32 `stk_zone`, the XBS location master, and the site **IBM Ibero Mill Export**) and in **NKG_Demo**
-(last updated 3 Nov: same tables, choices, roles, sites and apps as dev, including `stk_zone` with the 12,827 zones of
-the 15 Oct report and the IBM site; its other `stk_` data is the copy of dev's August month-end made on 26 Oct). Only
-in dev so far: nothing. The shipment tracker `stk_shipment` (table 27) and the direct purchase lots `stk_directlot` (table 28) have the
-same rows in both (1,253 and 150), like the 537 (table 26); tables 29-31 (XBS stuffing dates, comments, sub-product registers)
-are empty in both until something is loaded or written. Flows in NKG_Demo are saved
-but switched off until its connections exist. This document describes what exists in
+4 Nov 2026: tables 33 `stk_transferline` and 34 `stk_weighticket`, XBS's stock transfers and weighbridge tickets) and in
+**NKG_Demo** (last updated 5 Nov: same tables, choices, roles, sites and apps as dev, including tables 33-34, their
+roles and the Hub's two new data sources). Only in dev so far: nothing.
+
+Data, as of 5 Nov 2026:
+- **August:** NKG_Demo holds the copy of dev's August month-end made on 26 Oct.
+- **September:** loaded separately in each environment from the same files (3 Nov), so record ids and exception numbers
+  differ. In NKG_Demo it is signed and Completed.
+- **October:** NKG_Demo's October is an **exact copy of dev's** (same record ids), made on 5 Nov after the uncorrected
+  October (import IMP-261102-0826 from the 2 Nov XBS file) was deleted from NKG_Demo with a backup. It holds the corrected
+  XBS import (444 lines), the 4 Nov count (370 lines), 500 variances, 17 recounts, exceptions EX-092..094 and all the
+  Level 2 uploads (P526, 537 Aug + Oct, tracker, XBS shipped report, sub-products, transfers and tickets). Its two
+  test sign-offs were deleted in both on 6 Nov and its status set back to Reconciliation, so October has no
+  sign-offs yet. Recount answers loaded later go into both.
+
+Flows in NKG_Demo are saved but switched off until its connections exist. This document describes what exists in
 Dataverse today.
 The source of truth is `scripts/dataverse/schema.mjs`; `npm run dv:schema`
 creates or extends the tables from it (it only adds, never drops).
@@ -59,7 +68,7 @@ join on it; screens say **location**. "Level 1" and "Level 2" are the reconcilia
 1. **XBS is never changed.** XBS and Comtras data arrives as an *import* and is
    stored as a frozen snapshot (`stk_xbsimport`, `stk_xbsline`,
    `stk_comtrasposition`, `stk_contractinvoice`, `stk_shipment`, `stk_directlot`, `stk_xbsstuffing`, the
-   warehouse's sub-product registers `stk_subproduct` and XBS's location master `stk_zone`). No role can update or delete those rows; comments
+   warehouse's sub-product registers `stk_subproduct`, XBS's location master `stk_zone`, and XBS's stock transfers and weighbridge tickets `stk_transferline` / `stk_weighticket`). No role can update or delete those rows; comments
    (`stk_comment`) are locked the same way, so a thread is never rewritten. Anything
    wrong in XBS becomes an **exception** that a person fixes in XBS by hand; the
    next import shows whether it was fixed. The same snapshot can't be imported
@@ -83,10 +92,11 @@ join on it; screens say **location**. "Level 1" and "Level 2" are the reconcilia
 
 ## Tables at a glance
 
-Rows = what is in the dev environment on 26 Oct 2026: the **August 2026 month-end
+Rows = what was in the dev environment on 26 Oct 2026: the **August 2026 month-end
 replayed end to end** (Finance's XBS exports, P526, 537 and count; see PLAN.md), with Level 1
-decided by the Hub's automatic rules and counting closed automatically. NKG_Demo holds the
-same rows, except the 537 lines and the engine runs.
+decided by the Hub's automatic rules and counting closed automatically. September and October
+(see Status) have been added since and aren't in these counts, except tables 33-34, which hold
+October only.
 
 | # | Table | Ownership | Written by | Read by | Rows |
 |---|---|---|---|---|---|
@@ -104,6 +114,8 @@ same rows, except the 537 lines and the engine runs.
 | 29 | `stk_xbsstuffing` XBS stuffing (shipped report) | Org | Importer (**create only**) | mgmt roles | 0 |
 | 31 | `stk_subproduct` Sub-product register row (sub-products report, franchise inventory) | Org | Importer (**create only**) | mgmt roles | 0 |
 | 32 | `stk_zone` XBS zone (location master, XBS "Zone" report) | Org | Importer (**create only**) | everyone | 12,827 (report of 15 Oct, loaded 2 Nov) |
+| 33 | `stk_transferline` XBS transfer line (Stock Transfer Instruction Summary) | Org | Importer (**create only**) | mgmt roles | 793 (October) |
+| 34 | `stk_weighticket` Weighbridge ticket (XBS Ticket Summary) | Org | Importer (**create only**) | mgmt roles | 75 (October) |
 | | **Mapping** | | | | |
 | 7 | `stk_basketmap` Basket mapping | Org | via approved change only | everyone | 72 |
 | 8 | `stk_outturnmap` Outturn mapping | Org | via approved change only | everyone | 0 |
@@ -393,14 +405,15 @@ One per stock take × site × stack code. At Ibero the codes are bay locations
 | `stk_comment` | Multiline 2000 | Reason, for a site reported empty |
 | `stk_nothinghere` | Yes/No | Third-party site reported **empty** by its counter (added 18 Oct) |
 | `stk_sitefinished` | Yes/No | Third-party site **finished**: every stack counted (added 19 Oct) |
-| `stk_notcounted` | Yes/No | Third-party site **not counted on purpose** (too little to count; the comment says why): the XBS figure stands (added 4 Nov, dev) |
+| `stk_notcounted` | Yes/No | Third-party site **not counted on purpose** (too little to count; the comment says why): its lots are differences at 0, cause "Third party not counted", accepted and carried to the reconciliation (added 4 Nov) |
 
 Third-party sites are closed with one marker stack named `Whole site` flagged
 `stk_nothinghere` or `stk_sitefinished`. Once closed, every XBS lot at that site that
 nobody counted is judged as counted 0 (variance rules). Until then, lots nobody
-counted aren't variances. A marker flagged `stk_notcounted` also closes the site for
-the count close, but nothing there is judged: no variances, and the Level 1 summary
-shows the site's XBS figure as its physical, marked "not counted".
+counted aren't variances. A marker flagged `stk_notcounted` also closes the site: its lots are judged at 0 with
+the root cause "Third party not counted", accepted automatically (no recount, no
+exception), and proposed on the BRIC bridge as one reconciling item "Third parties not
+counted (...)".
 
 ### 14. `stk_countline` — Count line
 One per outturn counted at a stack. **Notes enabled**: the tag photo is an
@@ -653,15 +666,16 @@ setting `HeadsOfDepartment`, so flow F4 reminds and escalates the right person.
 ### 26. `stk_contractinvoice` — Contract invoice line (Comtras 537, locked; added 26 Oct 2026)
 The Comtras **537** contract invoicing journal (D537CCPDF): one row per booked invoice or credit-note line
 against a purchase contract and/or a sales contract. **Kenya only** (company `CC`; `GG` = Tanzania and
-`DD` = Uganda are refused at upload). Loaded once per stock take on the XBS import page and never changed:
-no role can write or delete these rows. `stk_salescontract` is the number XBS shows as "sales contract
+`DD` = Uganda are refused at upload). Loaded per stock take on the XBS import page, one file or one per month
+(from 5 Nov 2026: a line already loaded from another file - same voucher, side, account, contracts, document type,
+booking date, kg and value - is skipped), and never changed: no role can write or delete these rows. `stk_salescontract` is the number XBS shows as "sales contract
 blocked to" (`stk_xbsline.stk_salescontract`), which links an invoice to a lot in the warehouse.
 
 | Column | Type | Notes |
 |---|---|---|
 | `stk_name` PK | Text 100 | "<voucher> · <counterparty>" |
 | `stk_stocktake` | Lookup (required) | |
-| `stk_rownumber` | Whole number | Row in the file; **alternate key with the stock take** |
+| `stk_rownumber` | Whole number | file × 1,000,000 + row in the file (first file loaded = 0); **alternate key with the stock take** |
 | `stk_source` | Text 200 | File name |
 | `stk_side` | Choice: Customer · Supplier | FIBU2 D / K |
 | `stk_account` / `stk_counterparty` / `stk_profile` | Text | FIBU3, Kurz-Name, Profil |
@@ -670,8 +684,8 @@ blocked to" (`stk_xbsline.stk_salescontract`), which links an invoice to a lot i
 | `stk_doctype` | Whole number | Symbol: 11 purchase invoice, 21 sales invoice, 65 purchase credit note, 71 sales credit note; 15 / 25 / 61 / 75 corrections |
 | `stk_purchasecontract` (+ date) | Text 20 / Date | P.Ctr. (90xxx) |
 | `stk_salescontract` (+ date) | Text 20 / Date | S.Ctr. (3787xxx) |
-| `stk_buybags` / `stk_buykg` / `stk_buy60` / `stk_buyvalue` | Decimal | EK: purchase; credit notes negative |
-| `stk_sellbags` / `stk_sellkg` / `stk_sell60` / `stk_sellvalue` | Decimal | VK: sale |
+| `stk_buybags` / `stk_buykg` / `stk_buy60` / `stk_buyvalue` | Decimal | EK: purchase; credit notes negative; `stk_buy60` = EK-KG / 60 (worked out: Finance's hand-made 60 kg column isn't needed) |
+| `stk_sellbags` / `stk_sellkg` / `stk_sell60` / `stk_sellvalue` | Decimal | VK: sale; `stk_sell60` = VK-KG / 60 |
 
 Loaded in dev on 26 Oct from Finance's August file (D537CCPDF.xlsx), checked against it: 939 lines booked 2 Jul to 30 Sep, 87 purchase and 228 sales contracts, 48 counterparties;
 net 75,057.9 bags bought and 120,807.0 sold (by 31 Aug: 40,876.4 and 69,596.5). 5 of the 14 sales contracts
@@ -819,6 +833,44 @@ empty (rows are locked); the next Zone report loaded links them. Join on `stk_wa
 In NKG_Demo (loaded 3 Nov, after the site) they are linked to IBM. A load that stops part-way
 (throttling) is finished by running the importer again: it adds only the missing zones.
 
+### 33. `stk_transferline` — XBS transfer line (Stock Transfer Instruction Summary, locked; added 4 Nov 2026)
+One row per batch line of XBS's **Stock Transfer Instruction Summary**: what each transfer instruction
+asked for, what was issued (sent) and what was received (posted at the receiving warehouse), with the
+weighbridge ticket. Loaded per stock take on the XBS import page; each report is a copy keyed by its
+time, and Level 1 reads the latest one. Used as evidence on weight-loss exceptions (with `stk_weighticket`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `stk_name` PK | Text 100 | `<instruction> · <batch>` |
+| `stk_source` / `stk_reportedat` / `stk_rownumber` | Text 200 / Date & time / Whole number | File, "Report Generated On" (EAT), row in the file |
+| `stk_instruction` / `stk_type` / `stk_instructedon` | Text 30 / Text 100 / Date | Instruction number, type ("Stock Transfer Across Location"), date |
+| `stk_outturn` / `stk_batch` / `stk_grade` | Text 30 / 100 / 50 | As in XBS |
+| `stk_fromzone` / `stk_tozone` | Text 100 | "AGL-TEMP-0-0" / where it was received, "IBERO EXPORT WAREHOUSE-D-04-1" (empty until received) |
+| `stk_instructedkg` / `stk_issuedkg` / `stk_receivedkg` | Decimal | Instruction Details · Qty. / Issued Details · Qty. / Transferred Details · Qty. |
+| `stk_issuedon` / `stk_receivedon` | Date | Transaction dates |
+| `stk_gainkg` / `stk_missingkg` / `stk_balancekg` | Decimal | Loss Gain · Qty. (received less issued) / Loss (Missing Bag) · Qty. / Balance To Transfer · Qty. |
+| `stk_status` | Text 30 | Pending / Completed |
+| `stk_ticket` | Text 20 | Weighbridge ticket from the receipt (or issue) transaction, "TN-007867" |
+| `stk_stocktake` | Lookup → stk_stocktake | Required |
+| `stk_key` AK | Text 60 | `<yyyymmddhhmm UTC>\|<row>` |
+
+### 34. `stk_weighticket` — Weighbridge ticket (XBS Ticket Summary, locked; added 4 Nov 2026)
+One row per ticket of XBS's **Ticket Summary** (the report has a row per item on the truck, with the
+weights repeated). The report has no "Generated On" line: its time is read from the file name
+("XBS - Ticket Summary - 04-Nov-2026 - 124512").
+
+| Column | Type | Notes |
+|---|---|---|
+| `stk_name` PK | Text 100 | Ticket, "TN-007867" |
+| `stk_source` / `stk_reportedat` | Text 200 / Date & time | File, report time |
+| `stk_type` / `stk_status` / `stk_arrivedon` | Text 100 / Text 30 / Date | "Inbound ( Stock Transfer)", Approved, arrival date |
+| `stk_netkg` | Decimal | Net Weight: first weight less the truck's and the bags' tare - the coffee on the truck |
+| `stk_grossqtykg` | Decimal | Gross Qty.: the receipts posted on the ticket plus the bags' tare (TN-007867: 15,784.5 + 238.5 = 16,023) |
+| `stk_variancekg` | Decimal | Variance Qty.: net weight less the receipts posted (TN-007867: +17) |
+| `stk_units` / `stk_vehicle` / `stk_items` | Whole number / Text 30 / Text 200 | Units on the truck, vehicle no., grades on it |
+| `stk_stocktake` | Lookup → stk_stocktake | Required |
+| `stk_key` AK | Text 60 | `<yyyymmddhhmm UTC>\|<ticket>` |
+
 ## Relationships (summary)
 
 ```
@@ -840,6 +892,7 @@ stk_stocktake 1─* stk_kpisnapshot
 stk_stocktake 1─* stk_enginerun
 stk_stocktake 1─* stk_contractinvoice
 stk_stocktake 1─* stk_shipment / stk_directlot / stk_xbsstuffing / stk_subproduct
+stk_stocktake 1─* stk_transferline / stk_weighticket
 stk_exception 1─* stk_comment *─0..1 stk_stocktake          (or stk_variance 1─* stk_comment)
 stk_stocktake 1─* stk_allocationrun 1─* stk_assignment
 stk_counterprofile *─1 systemuser

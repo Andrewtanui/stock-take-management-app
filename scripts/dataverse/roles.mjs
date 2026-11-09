@@ -28,6 +28,8 @@ const READ_ALL_MGMT = {
   stk_directlot: "R",
   stk_xbsstuffing: "R",
   stk_subproduct: "R",
+  stk_transferline: "R",
+  stk_weighticket: "R",
   stk_mappingchange: "R",
   stk_assignment: "R",
   stk_countsheet: "R",
@@ -162,6 +164,8 @@ export const ROLES = [
       stk_directlot: "CR",
       stk_xbsstuffing: "CR",
       stk_subproduct: "CR",
+      stk_transferline: "CR",
+      stk_weighticket: "CR",
     },
   },
   {
@@ -193,4 +197,4 @@ export const ROLES = [
 ];
 
 /** Tables whose rows must never be changed once created. Checked by create-roles.mjs. */
-export const LOCKED = ["stk_xbsline", "stk_zone", "stk_comtrasposition", "stk_contractinvoice", "stk_shipment", "stk_directlot", "stk_xbsstuffing", "stk_comment", "stk_subproduct"];
+export const LOCKED = ["stk_xbsline", "stk_zone", "stk_comtrasposition", "stk_contractinvoice", "stk_shipment", "stk_directlot", "stk_xbsstuffing", "stk_comment", "stk_subproduct", "stk_transferline", "stk_weighticket"];

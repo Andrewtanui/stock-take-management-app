@@ -28,7 +28,7 @@ import type { SiteCode, Variance, XbsLine } from "./types";
 /** Bags at or above which a blocked lot not found is a data correction, not short weight. */
 export const LARGE = 5;
 
-export type CountItemKind = "Direct sale not counted" | "Sale not delivered" | "Data correction" | "Short weights" | "Counted, not in XBS" | "Count error";
+export type CountItemKind = "Third party not counted" | "Direct sale not counted" | "Sale not delivered" | "Data correction" | "Short weights" | "Counted, not in XBS" | "Count error";
 
 export interface CountItem {
   kind: CountItemKind;
@@ -68,6 +68,8 @@ interface Lot {
   batch?: string;
   expectedKg: number;
   countedKg: number;
+  /** At a third-party site not counted on purpose. */
+  notCounted?: boolean;
 }
 
 /**
@@ -92,6 +94,7 @@ export function countItems(variances: Variance[], lines: XbsLine[], thirdParty: 
     const lot = lots.get(k) ?? { site: v.site, outturn: v.outturn, grade: gradeOf(v.grade), batch: ls[0]?.b ?? v.batch, expectedKg: 0, countedKg: 0 };
     lot.expectedKg += v.expectedKg ?? v.expected * 60;
     lot.countedKg += v.countedKg ?? v.counted * 60;
+    if (v.cause === "Third party not counted") lot.notCounted = true;
     lots.set(k, lot);
   }
   // The latest auction sale in the snapshot (newest crop year, highest sale): its lots are the ones
@@ -124,6 +127,10 @@ export function countItems(variances: Variance[], lines: XbsLine[], thirdParty: 
     const tp = thirdParty.has(v.site);
     const recent = ls.some((l) => typeof l.d === "number" && l.d <= RECENT_DAYS);
     const otherGrade = outturns.has(`${v.site}|${up(v.outturn)}`);
+    if (v.notCounted) {
+      add("Third party not counted", v, bags, batch);
+      continue;
+    }
     if (!ls.length || v.expectedKg <= 0) add(otherGrade ? "Count error" : "Counted, not in XBS", v, bags, v.batch);
     // A direct-sale lot that arrived days ago was not there to count: that beats a grade mix-up.
     else if (notFound && tp && sale?.startsWith("DS") && recent) add("Direct sale not counted", v, bags, batch);
@@ -133,13 +140,15 @@ export function countItems(variances: Variance[], lines: XbsLine[], thirdParty: 
     else add("Count error", v, bags, batch);
   }
 
-  const ORDER: CountItemKind[] = ["Direct sale not counted", "Sale not delivered", "Data correction", "Short weights", "Counted, not in XBS", "Count error"];
+  const ORDER: CountItemKind[] = ["Third party not counted", "Direct sale not counted", "Sale not delivered", "Data correction", "Short weights", "Counted, not in XBS", "Count error"];
   return ORDER.flatMap((kind) => {
     const g = groups.get(kind);
     if (!g || Math.abs(g.bags) < 0.01) return [];
     const where = [...g.sites].sort().join(", ");
     const label =
-      kind === "Direct sale not counted"
+      kind === "Third party not counted"
+        ? `Third parties not counted (${where})`
+        : kind === "Direct sale not counted"
         ? `Direct-sale lots not counted, received after the count (${where})`
         : kind === "Sale not delivered"
           ? `Sale ${g.sale} not delivered (${where})`

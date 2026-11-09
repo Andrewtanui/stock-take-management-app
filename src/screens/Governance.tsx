@@ -20,8 +20,16 @@ export default function Governance() {
   const kpis = store.kpis ?? [];
   const count = (s: KpiStatus) => kpis.filter((k) => k.status === s).length;
 
-  // Trend: one column per stock take (newest first, up to six), the active one from the live figures.
-  const takes = [...new Map(store.kpiHistory.map((h) => [h.stockTake, h.countDate])).entries()].filter(([st]) => st !== store.activeStockTake).slice(0, 5);
+  // Trend: one column per stock take, oldest on the left and the latest month on the far right (up to six);
+  // the stock take on screen from its live figures, the others as frozen.
+  const ACTIVE = ""; // marks the active stock take's column
+  const columns = [
+    ...[...new Map(store.kpiHistory.map((h) => [h.stockTake, h.countDate])).entries()].filter(([st]) => st !== store.activeStockTake),
+    [ACTIVE, store.kpiCountDate ?? ""] as [string, string],
+  ]
+    .sort((a, b) => (a[1] || "9999").localeCompare(b[1] || "9999"))
+    .slice(-6);
+  const takes = columns.filter(([st]) => st !== ACTIVE);
   const cell = (st: string, codeOf: string) => store.kpiHistory.find((h) => h.stockTake === st && h.code === codeOf);
 
   return (
@@ -97,9 +105,8 @@ export default function Governance() {
                 <thead>
                   <tr>
                     <th>KPI</th>
-                    <th>{month(store.kpiCountDate ?? "") || "This month"}</th>
-                    {takes.map(([st, d]) => (
-                      <th key={st}>{month(d) || st}</th>
+                    {columns.map(([st, d]) => (
+                      <th key={st || "active"}>{st === ACTIVE ? month(d) || "This month" : month(d) || st}</th>
                     ))}
                   </tr>
                 </thead>
@@ -107,10 +114,13 @@ export default function Governance() {
                   {kpis.map((k) => (
                     <tr key={k.code}>
                       <td>{k.name}</td>
-                      <td>
-                        <Chip tone={TONE[k.status]}>{k.display}</Chip>
-                      </td>
-                      {takes.map(([st]) => {
+                      {columns.map(([st]) => {
+                        if (st === ACTIVE)
+                          return (
+                            <td key="active">
+                              <Chip tone={TONE[k.status]}>{k.display}</Chip>
+                            </td>
+                          );
                         const h = cell(st, k.code);
                         return <td key={st}>{h ? <Chip tone={TONE[h.status]}>{h.display}</Chip> : <span className="muted">-</span>}</td>;
                       })}

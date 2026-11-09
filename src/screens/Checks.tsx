@@ -35,7 +35,7 @@ const SEV = {
 export default function Checks() {
   const store = useStore();
   // The checks run on the active stock take's XBS import; name it and its snapshot time.
-  const st = store.stockTakes.find((s) => s.status !== "Completed") ?? store.stockTakes[0];
+  const st = store.stockTake;
   // With a shipment tracker loaded, the contract checks use it as at the count date; then the part lots.
   const tracker = store.shipments?.lines;
   const cutOff = store.kpiCountDate ?? new Date().toISOString().slice(0, 10);

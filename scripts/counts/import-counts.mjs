@@ -8,7 +8,7 @@
 //
 // Options:
 //   --empty-sites KCCE,MAXA   third-party sites checked and found empty (one "Whole site" stack, nothing to count)
-//   --not-counted AGL,KPCU    third-party sites not counted on purpose (too little to count): the XBS figure stands
+//   --not-counted AGL,KPCU    third-party sites not counted on purpose (too little to count): lots at 0, to the reconciliation
 //   --reason "..."            why they weren't counted (default "too little to count")
 //   --no-empty-stacks         don't submit the Ibero XBS stacks that have no count lines (default: submit
 //                             them empty, so their XBS lots are judged as counted 0 - it is a full count)
@@ -93,7 +93,7 @@ console.log(`Stock take "${take.stk_name}" (count date ${take.stk_countdate})${t
 console.log(`File ${FILE}: ${plan.rows} rows -> ${plan.withStock} with stock -> ${lines.length} count lines (${plan.withStock - lines.length} merged: same lot on one stack)`);
 console.log(`Counted ${plan.from?.slice(0, 16)} to ${plan.to?.slice(0, 16)} UTC by ${plan.clerks} people`);
 console.log("\nBy warehouse (60 kg bag equivalents):");
-const CHOICE = { empty: "  checked, reported empty", notCounted: "  not counted on purpose: XBS figure stands", open: "  NOT COUNTED (no lines; --empty-sites if checked and empty, --not-counted if left on purpose)" };
+const CHOICE = { empty: "  checked, reported empty", notCounted: "  not counted on purpose: lots at 0, to the reconciliation", open: "  NOT COUNTED (no lines; --empty-sites if checked and empty, --not-counted if left on purpose)" };
 for (const s of plan.sites)
   console.log(`  ${s.site.padEnd(5)} counted ${eq60(s.countedKg).padStart(9)}  XBS ${eq60(s.xbsKg).padStart(9)}  lines ${String(s.lines).padStart(4)}  stacks ${s.stacks}${s.emptyStacks ? ` + ${s.emptyStacks} XBS stacks with nothing recorded` : ""}${s.choice ? CHOICE[s.choice] : ""}`);
 console.log(`  total counted ${eq60(sum(lines, (l) => l.kg))}  XBS ${eq60(sum(lots, (l) => l.kg))}`);

@@ -52,6 +52,11 @@ const n = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 1 })
  * the way, both handled with the third-party warehouse (discovery, Logistics).
  */
 const RECENT_DAYS = 14;
+/** "Wrong lot number": the weight of the counted lot and the XBS lot agree within this (kg, or share of the XBS weight). */
+const WRONG_LOT_KG = 5;
+const WRONG_LOT_SHARE = 0.01;
+/** Start of the why of a lot counted under a mistyped number; the likely XBS outturn follows it. */
+export const WRONG_LOT_MARK = "Wrong lot number? Probably";
 const plural = (x: number, w: string) => `${n(Math.abs(x))} ${w}${Math.abs(x) === 1 ? "" : "s"}`;
 
 /** Edits (insert, delete, change one character) between two outturns: "KC8181" -> "KCS8181" is 1. */
@@ -68,7 +73,8 @@ export function typos(a: string, b: string) {
 
 /**
  * A third-party site closed: reported empty, or finished (every stack counted) - either way every
- * lot XBS has there that wasn't counted counts as 0 - or not counted on purpose (the XBS figure stands).
+ * lot XBS has there that wasn't counted counts as 0 - or not counted on purpose (its lots are differences
+ * at 0, carried to the reconciliation).
  */
 export interface EmptySite {
   site: SiteCode;
@@ -80,8 +86,8 @@ export interface EmptySite {
   /** Finished after counting its stacks (rather than found empty). */
   finished?: boolean;
   /**
-   * Not counted on purpose (too little to count): closed for the count close, but nothing there is
-   * judged - no variances, the XBS figure stands.
+   * Not counted on purpose (too little to count): every lot XBS has there is a difference at 0, with
+   * the cause "Third party not counted", carried to the reconciliation as a reconciling item.
    */
   notCounted?: boolean;
 }
@@ -119,7 +125,7 @@ export function draftVariances(
     if (!thirdParty.has(s.site)) for (const l of xbs) if (l.wh === s.site && l.z === s.stack) judge.add(lotKey(l.wh, s.stack, l.b));
   for (const [k, cs] of counted) if (cs.some((c) => submitted.has(`${c.site}|${c.stack}`))) judge.add(k);
   // A site reported empty or finished: every lot XBS has there is judged (not counted = 0).
-  const emptyAt = new Map(emptySites.filter((e) => thirdParty.has(e.site) && !e.notCounted).map((e) => [e.site, e]));
+  const emptyAt = new Map(emptySites.filter((e) => thirdParty.has(e.site)).map((e) => [e.site, e]));
   for (const l of xbs) if (emptyAt.has(l.wh)) judge.add(lotKey(l.wh, "", l.b));
 
   // A counted lot XBS has, at the same place, with the same units and weight and an outturn at most
@@ -137,6 +143,27 @@ export function draftVariances(
   };
   let twin: CountFact | undefined;
 
+  // A counted outturn XBS has nowhere, but XBS has exactly one lot (any site, Blocked for processing
+  // too) one or two characters off with the same grade and about the same weight: most likely the
+  // same coffee under a mistyped number (Oct 2026: 51MH1001 counted at Ibero C-11, XBS 51MG1001 at
+  // AGL, 440 vs 438 kg). Lot numbers run in sequence, so the grade and weight are what make it one.
+  const xbsLots = new Map<string, { site: SiteCode; outturn: string; grade: string; kg: number; at: Set<string> }>();
+  for (const l of xbs) {
+    const k = `${l.wh}|${l.o.toUpperCase()}|${l.i.trim().toUpperCase()}`;
+    const lot = xbsLots.get(k) ?? { site: l.wh, outturn: l.o, grade: l.i.trim().toUpperCase(), kg: 0, at: new Set<string>() };
+    lot.kg += l.kg;
+    lot.at.add(where(l));
+    xbsLots.set(k, lot);
+  }
+  const likelyLot = (outturn: string, grade: string, kg: number) => {
+    const g = grade.trim().toUpperCase();
+    const hits = [...xbsLots.values()].filter(
+      (x) => (!g || !x.grade || x.grade === g) && Math.abs(x.kg - kg) <= Math.max(WRONG_LOT_KG, x.kg * WRONG_LOT_SHARE) && typos(x.outturn, outturn) <= 2,
+    );
+    return hits.length === 1 ? hits[0] : undefined;
+  };
+  let likely: ReturnType<typeof likelyLot>;
+
   const drafts: VarianceDraft[] = [];
   for (const k of judge) {
     const [site, stackOrEmpty, batch] = k.split("|") as [SiteCode, string, string];
@@ -144,7 +171,8 @@ export function draftVariances(
     const expected = xbs.filter((l) => l.wh === site && l.b === batch && (thirdParty.has(site) || l.z === stackOrEmpty));
     const head = expected[0];
     const mark = !cs.length ? emptyAt.get(site) : undefined;
-    const empty = mark && !mark.finished ? mark : undefined;
+    const skipped = mark?.notCounted ? mark : undefined;
+    const empty = mark && !mark.finished && !mark.notCounted ? mark : undefined;
     const notFound = mark?.finished ? mark : undefined;
     const stack = stackOrEmpty || cs[0]?.stack || mark?.stack || "";
     const outturn = head?.o ?? cs[0]?.outturn ?? batch;
@@ -166,7 +194,10 @@ export function draftVariances(
 
     let cause: RootCause;
     let why: string;
-    if (empty) {
+    if (skipped) {
+      cause = "Third party not counted";
+      why = `${siteShort(site)} wasn't counted on purpose (${skipped.reason}). XBS has ${plural(expectedUnits, "unit")} of ${outturn} here: carried to the reconciliation as a reconciling item.`;
+    } else if (empty) {
       cause = "Unposted gate-out";
       why = `${siteShort(site)} was reported empty by ${empty.by}${empty.at ? ` at ${empty.at}` : ""}: "${empty.reason}". XBS still has ${plural(expectedUnits, "unit")} of ${outturn} here. If the bags left before the count date, post the gate-out in XBS; if after, it's a timing difference.`;
     } else if (people.length > 1) {
@@ -180,6 +211,13 @@ export function draftVariances(
       // the lot typed twice (Aug 2026: KC8181 typed for KCS8181, 50 bags counted twice).
       cause = "Duplicate entry";
       why = `${outturn} isn't in XBS, but ${twin.outturn} was counted at the same place with the same ${plural(countedUnits, "unit")} (${twin.by} at ${twin.at}). It looks like the same lot typed twice: remove one of the two lines.`;
+    } else if (!expected.length && !elsewhere.length && (likely = likelyLot(outturn, cs[0]?.grade ?? "", countedKg))) {
+      // Kept as a mapping error (the number doesn't map to XBS); the why names the likely lot, and
+      // starts with WRONG_LOT_MARK so auto-decide can find it.
+      cause = "Mapping error";
+      const edits = typos(likely.outturn, outturn);
+      const there = likely.site === site ? [...likely.at].join(", ") : siteShort(likely.site);
+      why = `${WRONG_LOT_MARK} ${likely.outturn}. ${outturn} isn't in XBS, but ${likely.outturn} is (${there}): ${edits} character${edits === 1 ? "" : "s"} different, the same grade, ${n(countedKg)} kg counted against ${n(likely.kg)} kg in XBS. Correct the lot number on the count${likely.site === site ? "" : `; XBS has it at ${siteShort(likely.site)}, so check whether a transfer to ${siteShort(site)} wasn't posted`}.`;
     } else if (!expected.length) {
       cause = "Mapping error";
       why = `${outturn} isn't in XBS anywhere. Check the tag against the lots expected on this stack — it may be misread, or missing from XBS.`;

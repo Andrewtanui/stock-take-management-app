@@ -70,6 +70,7 @@ export const LABELS = {
 
 /** Typed items that look like the same item, by Finance's own words for them. */
 const ALIKE: Record<CountItemKind, RegExp> = {
+  "Third party not counted": /not counted|too little/i,
   "Direct sale not counted": /\bDS\s?\d/i,
   "Sale not delivered": /\bsale\b|\bS_?\d+\b/i,
   "Data correction": /correction/i,

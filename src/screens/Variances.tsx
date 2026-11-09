@@ -20,6 +20,7 @@ const CAUSES: RootCause[] = [
   "Partial delivery: rest still at third party",
   "Weight loss: claim from warehouse",
   "Posting timing / late posting",
+  "Third party not counted",
   "Not yet known",
 ];
 

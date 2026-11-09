@@ -248,10 +248,24 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "stk_transferlines": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_transferlineid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "stk_variances": {
     "tableId": "",
     "version": "",
     "primaryKey": "stk_varianceid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "stk_weightickets": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "stk_weighticketid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

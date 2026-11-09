@@ -2,6 +2,8 @@
 // Two implementations: ./mock (demo data in the browser) and ./dataverse (the
 // IBKY Stock Take tables). Pick one with VITE_DATA=mock|dataverse.
 
+import type { TransferUpload } from "../transfers-parse";
+import type { RecountPlan, RecountSheetRow } from "../recount-import";
 import type { ReconItem, ThreadComment } from "../types";
 import type { GovernanceData } from "../governance";
 import type { Kpi } from "../kpi";
@@ -88,6 +90,11 @@ export interface MgmtData {
   level1?: { runs: "Hub" | "Engine"; hubRuns: boolean; lastRun?: string };
   stacks?: StackInfo[];
   stockTakes: StockTake[];
+  /** The stock take this load is about (by name), and the current one (the latest not Completed). */
+  activeStockTake?: string;
+  currentStockTake?: string;
+  /** Looking at a stock take other than the current one: read-only, Level 1 doesn't run. */
+  viewing?: boolean;
   sheets: CountSheet[];
   variances: Variance[];
   exceptions: Exception[];
@@ -106,6 +113,8 @@ export interface MgmtData {
   shipments?: ShipmentTracker;
   /** XBS stuffing dates (shipped report) loaded for the active stock take: one file per month. */
   xbsStuffing?: XbsStuffingSet;
+  /** XBS stock transfer and weighbridge ticket reports loaded for the active stock take (evidence on weight losses). */
+  transferReports?: TransferReport[];
   /** The warehouse's sub-product registers (sub-products report, franchise inventory) loaded for the active stock take. */
   subProducts?: SubProductSet;
   /** Setting AfloatAgeingDays ("30,60"): day limits of the afloat ageing buckets. */
@@ -172,6 +181,8 @@ export interface XbsUploadToSave {
 export interface DataSource {
   readonly kind: "mock" | "dataverse";
   load(): Promise<MgmtData>;
+  /** Load this stock take (by name) on the next load instead of the current one; undefined = back to the current. */
+  viewStockTake?(name?: string): void;
   createStockTake(st: StockTake): Promise<void>;
   closeStockTake(id: string, comment: string): Promise<void>;
   /** The stock take's Level 1 summary PDF (written when counting closes), if there is one. */
@@ -197,8 +208,14 @@ export interface DataSource {
   importShipments?(upload: ShipmentUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
   /** Adds an XBS shipped report's stuffing dates to the active stock take (rows already saved are skipped). */
   importXbsStuffing?(upload: XbsStuffingUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
+  /** Stores an XBS stock transfer or ticket report for the active stock take (locked; rows already saved are skipped). */
+  importTransfers?(upload: TransferUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
   /** Stores a sub-product register for the active stock take (locked: one file per register). */
   importSubProducts?(upload: SubProductUpload, onProgress?: (done: number, total: number) => void): Promise<void>;
+  /** Reads the returned blind recount sheet against the active stock take's recounts (writes nothing). */
+  planRecounts?(rows: RecountSheetRow[]): Promise<RecountPlan>;
+  /** Saves the answers as blind recount lines and closes those recounts; Level 1 settles them on the next load. */
+  importRecounts?(plan: RecountPlan, file: string, onProgress?: (done: number, total: number) => void): Promise<void>;
   /** Reads the old Physical Count app's CSV against the active stock take: what would be loaded (writes nothing). */
   planCounts?(csvText: string, opt: ImportOptions): Promise<CountPreview>;
   /** Loads a planned count into the active stock take (Count in progress only; an interrupted load finishes). */
@@ -266,11 +283,15 @@ export interface ShipmentTracker {
 
 /** The Comtras 537 contract invoicing journal as loaded for a stock take. */
 export interface ContractJournal {
+  /** The files' names, joined (one per month's export, or one covering the look-back). */
   file: string;
-  /** When it was loaded. */
+  /** When the latest file was loaded. */
   at: string;
   by: string;
+  /** Every line of every file loaded for the stock take (a line in two files is kept once). */
   lines: ContractLine[];
+  /** Each file loaded: its lines here and the days it books. */
+  files: { file: string; at: string; by: string; lines: number; from?: string; to?: string }[];
 }
 
 /** The Comtras P526 report as loaded for a stock take. */
@@ -280,4 +301,12 @@ export interface ComtrasPosition {
   at: string;
   by: string;
   lines: ComtrasLine[];
+}
+
+/** One XBS stock transfer or ticket report loaded for a stock take (each upload is kept; Level 1 reads the latest). */
+export interface TransferReport {
+  kind: "transfers" | "tickets";
+  file: string;
+  reportedAt?: string;
+  rows: number;
 }

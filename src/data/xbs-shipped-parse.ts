@@ -50,15 +50,17 @@ export function parseShipped(rows: Cell[][]): XbsStuffing[] | null {
   const head = rows[at].map(text);
   const col = (name: string) => head.indexOf(name);
   const c = { date: col("Stuffing Date"), so: col("SO No."), kg: col("Qty in Kgs") };
-  // The SI has no heading: it is the column right after "SO No." ("- 5622 ( 5689 )").
-  const siCol = c.so + 1;
+  // The CSV export has the SI in an unheaded column right after "SO No." ("- 5622 ( 5689 )"); the
+  // Excel export puts both in "SO No." ("3787675 - 5645C ( 5750 )", next column Dispatch Batch No.).
+  const siCol = head[c.so + 1] ? -1 : c.so + 1;
   if (c.kg < 0) throw new Error('The XBS shipped report has no "Qty in Kgs" column.');
   const sum = new Map<string, XbsStuffing>();
   for (const r of rows.slice(at + 1)) {
-    const so = text(r?.[c.so]).replace(/\.0+$/, "");
+    const m = text(r?.[c.so]).match(/^(\d+)(?:\.0+)?\s*(?:-\s*(.*))?$/);
     const stuffedOn = stuffingDate(r?.[c.date] ?? null);
-    if (!/^\d+$/.test(so) || !stuffedOn) continue;
-    const si = siNumber(text(r?.[siCol]));
+    if (!m || !stuffedOn) continue;
+    const so = m[1];
+    const si = siNumber(m[2] ?? (siCol >= 0 ? text(r?.[siCol]) : ""));
     const k = `${so}|${si}|${stuffedOn}`;
     const x = sum.get(k) ?? { salesContract: so, si, stuffedOn, bags: 0, lots: 0 };
     x.bags += num(r?.[c.kg]) / 60;

@@ -12,6 +12,7 @@ import {
   Stk_exceptionsstk_source,
   Stk_exceptionsstk_status,
 } from "../generated/models/Stk_exceptionsModel";
+import { Stk_commentsstk_department } from "../generated/models/Stk_commentsModel";
 import { Stk_recountsstk_status } from "../generated/models/Stk_recountsModel";
 import { Stk_stacksstk_status } from "../generated/models/Stk_stacksModel";
 import { Stk_stocktakesstk_status } from "../generated/models/Stk_stocktakesModel";
@@ -25,7 +26,10 @@ import { l1Pdf, toBase64 } from "./l1-pdf";
 import { currentCounts } from "./reports";
 import type { AllocationData } from "./source/types";
 import type { AllocationChange, AllocationRun, CounterProfile, CountRow, Dept, Exception, Priority, RootCause, Site, SiteCode, Variance, XbsLine } from "./types";
+import { EVIDENCE_MARK, weightLossEvidence } from "./transfer-evidence";
+import type { TransferLine, WeighTicket } from "./transfers-parse";
 import { draftVariances, type CountFact, type EmptySite } from "./variance-rules";
+import { siteResolver } from "./xbs-parse";
 
 /* ---------- how Level 1 reaches Dataverse ---------- */
 
@@ -449,7 +453,20 @@ export async function autoDecide(
       decided: !!r.stk_decidedon,
     };
   });
-  const plan = planAutoDecisions(vs, facts, thirdParty, settings, siteShort);
+  const movedRows = await db.list<Row>("stk_variances", {
+    select: ["stk_lotkey", "stk_outturn", "stk_expectedunits", "stk_countedunits", "stk_expectedkg", "stk_countedkg", "_stk_site_value"],
+    filter: `_stk_stocktake_value eq ${ctx.stockTakeId} and stk_state eq ${code(Stk_variancesstk_state, "Accepted")} and stk_cause eq ${code(Stk_variancesstk_cause, "Split lot")}`,
+  });
+  const moved = movedRows.map((r) => ({
+    site: siteCode.get(r._stk_site_value!) ?? "IBR",
+    stack: (r.stk_lotkey ?? "").split("|")[2] ?? "",
+    outturn: r.stk_outturn ?? "",
+    expectedUnits: r.stk_expectedunits ?? 0,
+    countedUnits: r.stk_countedunits ?? 0,
+    expectedKg: r.stk_expectedkg ?? undefined,
+    countedKg: r.stk_countedkg ?? undefined,
+  }));
+  const plan = planAutoDecisions(vs, facts, thirdParty, settings, siteShort, moved);
   if (!plan.length) return 0;
 
   const now = new Date().toISOString();
@@ -581,6 +598,98 @@ export async function autoDecide(
   return decided;
 }
 
+/* ---------- 3b. evidence on weight losses (XBS stock transfers + weighbridge tickets) ---------- */
+
+type TransferRow = {
+  stk_reportedat?: string; stk_rownumber?: number; stk_instruction?: string; stk_type?: string; stk_instructedon?: string; stk_outturn?: string; stk_batch?: string; stk_grade?: string;
+  stk_fromzone?: string; stk_tozone?: string; stk_instructedkg?: number; stk_issuedkg?: number; stk_issuedon?: string; stk_receivedkg?: number; stk_receivedon?: string;
+  stk_gainkg?: number; stk_missingkg?: number; stk_balancekg?: number; stk_status?: string; stk_ticket?: string;
+};
+type TicketRow = { stk_name: string; stk_reportedat?: string; stk_type?: string; stk_status?: string; stk_arrivedon?: string; stk_netkg?: number; stk_grossqtykg?: number; stk_variancekg?: number; stk_units?: number; stk_vehicle?: string; stk_items?: string };
+const TRANSFER_SELECT = ["stk_reportedat", "stk_rownumber", "stk_instruction", "stk_type", "stk_instructedon", "stk_outturn", "stk_batch", "stk_grade", "stk_fromzone", "stk_tozone", "stk_instructedkg", "stk_issuedkg", "stk_issuedon", "stk_receivedkg", "stk_receivedon", "stk_gainkg", "stk_missingkg", "stk_balancekg", "stk_status", "stk_ticket"];
+const TICKET_SELECT = ["stk_name", "stk_reportedat", "stk_type", "stk_status", "stk_arrivedon", "stk_netkg", "stk_grossqtykg", "stk_variancekg", "stk_units", "stk_vehicle", "stk_items"];
+/** Rows of the latest report loaded (each upload is a copy keyed by its report time). */
+const latestReport = <T extends { stk_reportedat?: string }>(rows: T[]) => {
+  const at = rows.reduce((m, r) => ((r.stk_reportedat ?? "") > m ? (r.stk_reportedat ?? "") : m), "");
+  return { at: at || undefined, rows: rows.filter((r) => (r.stk_reportedat ?? "") === at) };
+};
+
+/**
+ * Adds an evidence comment to each open weight-loss exception of the stock take, from the latest
+ * transfer and ticket reports loaded - only where the numbers prove something (transfer-evidence.ts),
+ * and once per exception. Runs on every Level 1 pass, so reports loaded after the exceptions were
+ * raised are used too. Returns how many comments it added.
+ */
+export async function addEvidence(db: Level1Db, ctx: Level1Ctx, sites: Site[]): Promise<number> {
+  const st = `_stk_stocktake_value eq ${ctx.stockTakeId}`;
+  const [tAll, kAll] = await Promise.all([
+    db.list<TransferRow>("stk_transferlines", { select: TRANSFER_SELECT, filter: st }),
+    db.list<TicketRow>("stk_weightickets", { select: TICKET_SELECT, filter: st }),
+  ]);
+  if (!tAll.length) return 0;
+  const closed = code(Stk_exceptionsstk_status, "Closed");
+  const exRows = await db.list<{ stk_exceptionid: string; _stk_variance_value?: string }>("stk_exceptions", {
+    select: ["stk_exceptionid", "_stk_variance_value"],
+    filter: `${st} and stk_kind eq ${code(Stk_exceptionsstk_kind, "Weight loss: claim from warehouse")} and stk_status ne ${closed}`,
+  });
+  if (!exRows.length) return 0;
+  const said = new Set(
+    (await db.list<{ _stk_exception_value?: string; stk_text?: string }>("stk_comments", { select: ["_stk_exception_value", "stk_text"], filter: st }))
+      .filter((c) => c.stk_text?.startsWith(`${EVIDENCE_MARK} (`))
+      .map((c) => c._stk_exception_value),
+  );
+  const todo = exRows.filter((e) => e._stk_variance_value && !said.has(e.stk_exceptionid));
+  if (!todo.length) return 0;
+
+  const [take] = await db.list<{ stk_countdate?: string }>("stk_stocktakes", { select: ["stk_countdate"], filter: `stk_stocktakeid eq ${ctx.stockTakeId}` });
+  const T = latestReport(tAll);
+  const K = latestReport(kAll);
+  const transfers: TransferLine[] = T.rows.map((r) => ({
+    row: r.stk_rownumber ?? 0, instruction: r.stk_instruction ?? "", type: r.stk_type ?? "", instructedOn: r.stk_instructedon, outturn: r.stk_outturn ?? "", batch: r.stk_batch ?? "", grade: r.stk_grade ?? "",
+    fromZone: r.stk_fromzone ?? "", toZone: r.stk_tozone ?? "", instructedKg: Number(r.stk_instructedkg ?? 0), issuedKg: Number(r.stk_issuedkg ?? 0), issuedOn: r.stk_issuedon,
+    receivedKg: Number(r.stk_receivedkg ?? 0), receivedOn: r.stk_receivedon, gainKg: Number(r.stk_gainkg ?? 0), missingKg: Number(r.stk_missingkg ?? 0), balanceKg: Number(r.stk_balancekg ?? 0),
+    status: r.stk_status ?? "", ticket: r.stk_ticket ?? undefined,
+  }));
+  const tickets: WeighTicket[] = K.rows.map((r) => ({
+    ticket: r.stk_name, type: r.stk_type ?? "", status: r.stk_status ?? "", arrivedOn: r.stk_arrivedon, netKg: Number(r.stk_netkg ?? 0), grossQtyKg: Number(r.stk_grossqtykg ?? 0),
+    varianceKg: Number(r.stk_variancekg ?? 0), units: r.stk_units ?? 0, vehicle: r.stk_vehicle ?? "", items: (r.stk_items ?? "").split(",").filter(Boolean),
+  }));
+  // XBS warehouse names to the sites' short names ("AGL" -> AGL, "IBERO EXPORT WAREHOUSE" -> Ibero).
+  const resolve = siteResolver(sites.map((s) => ({ code: s.code, name: s.name, thirdParty: s.thirdParty })));
+  const short = (w: string) => {
+    const c = resolve(w);
+    return (c && sites.find((s) => s.code === c)?.short) || w;
+  };
+  let added = 0;
+  for (const e of todo) {
+    const [v] = await db.list<{ stk_lotkey?: string; stk_outturn?: string; stk_grade?: string; stk_expectedkg?: number; stk_countedkg?: number }>("stk_variances", {
+      select: ["stk_lotkey", "stk_outturn", "stk_grade", "stk_expectedkg", "stk_countedkg"],
+      filter: `stk_varianceid eq ${e._stk_variance_value}`,
+    });
+    if (!v?.stk_lotkey) continue;
+    const [, site, stack, batch] = v.stk_lotkey.split("|");
+    const siteName = sites.find((s) => s.code === site)?.name;
+    if (!siteName || !stack) continue;
+    const ev = weightLossEvidence(
+      { siteName, stack, outturn: v.stk_outturn ?? "", grade: (v.stk_grade ?? "").split(" · ")[0], batch: batch ?? "", expectedKg: Number(v.stk_expectedkg ?? 0), countedKg: Number(v.stk_countedkg ?? 0) },
+      transfers,
+      tickets,
+      { countDate: (take?.stk_countdate ?? new Date().toISOString()).slice(0, 10), transfersAt: T.at, ticketsAt: K.at, short },
+    );
+    if (!ev) continue;
+    await db.create("stk_comments", {
+      stk_name: ev.text.slice(0, 100),
+      statecode: 0,
+      stk_text: ev.text.slice(0, 2000),
+      stk_department: code(Stk_commentsstk_department, "Operations"),
+      "stk_stocktake@odata.bind": bind("stk_stocktakes", ctx.stockTakeId),
+      "stk_exception@odata.bind": bind("stk_exceptions", e.stk_exceptionid),
+    });
+    added++;
+  }
+  return added;
+}
+
 /* ---------- 4. counting closes on its own ---------- */
 
 /** Note subject of the Level 1 summary PDF on a stock take (flow F10 attaches it). */
@@ -650,12 +759,12 @@ export async function closeCountIfDone(
   const input: SummaryInput = {
     stockTake: o.active.stk_name,
     closedAt,
-    // A site not counted on purpose shows its XBS figure as the physical, and says so.
+    // A site not counted on purpose shows 0 counted, and says so (its lots are on the bridge).
     sites: o.sites
       .filter((x) => xbs.has(x.code) || phys.has(x.code))
       .map((x) =>
         notCounted.has(x.code)
-          ? { name: `${x.short} (not counted: XBS figure)`, xbs: xbs.get(x.code) ?? 0, physical: xbs.get(x.code) ?? 0 }
+          ? { name: `${x.short} (not counted: to the reconciliation)`, xbs: xbs.get(x.code) ?? 0, physical: phys.get(x.code) ?? 0 }
           : { name: x.short, xbs: xbs.get(x.code) ?? 0, physical: phys.get(x.code) ?? 0 },
       ),
     variances: {
@@ -740,6 +849,8 @@ export async function runLevel1(db: Level1Db, stockTakeId: string): Promise<Leve
   const allocation = await readAllocation(db, stockTakeId, settingRows, peopleRows, new Map(siteRows.map((r) => [r.stk_siteid, r.stk_code as SiteCode])));
   allocation.openRecounts = openRecountsOf(recountRows);
   const decided = await autoDecide(db, ctx, facts, countRows, thirdParty, siteCode, siteShort, l1.auto, allocation);
+  // 2b. evidence on weight-loss exceptions, from the XBS transfer and ticket reports when loaded
+  await addEvidence(db, ctx, sites);
 
   // 3. the count closes once everything is in
   const STATE = { Open: "open", "Recount sent": "recount", Accepted: "accepted", "Exception raised": "exception" } as const;

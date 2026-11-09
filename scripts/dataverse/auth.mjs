@@ -16,7 +16,9 @@ const TENANT = process.env.DATAVERSE_TENANT ?? "94dd01c6-aa12-4c35-a812-c1079de2
 // Power Platform CLI's public client (already allowed by the tenant's policies).
 const CLIENT_ID = process.env.DATAVERSE_CLIENT_ID ?? "9cee029c-6210-4654-90bb-17e6e9d36617";
 const CACHE_DIR = join(homedir(), ".ibky-stocktake");
-const CACHE_FILE = join(CACHE_DIR, "msal-cache.json");
+// A separate target (e.g. NKG East Africa, signed in as a different person) can point at its own
+// cache file so its sign-in never mixes with the default one. Defaults to the shared cache.
+const CACHE_FILE = process.env.DATAVERSE_CACHE ?? join(CACHE_DIR, "msal-cache.json");
 
 const cachePlugin = {
   async beforeCacheAccess(ctx) {
