@@ -90,6 +90,10 @@ p { margin: 0; }
 .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .page-head-text { min-width: 0; max-width: 760px; }
 .page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.head-search { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.head-search .input { width: 220px; max-width: 52vw; }
+.tabsbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.tabsbar .head-search { margin-left: auto; }
 .h1 { margin: 0; font-size: 28px; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; }
 .h2 { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; }
 .h3 { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.3; }
@@ -521,6 +525,23 @@ body:has(.vactions) .toast { bottom: 104px; }
 .assistant-bubble ul { margin: 0 0 8px; padding-left: 18px; }
 .assistant-bubble li { margin: 2px 0; }
 .assistant-bubble .chip { height: 20px; padding: 0 8px; font-size: 11.5px; vertical-align: 1px; }
+.assistant-advisory { display: flex; align-items: center; gap: 9px; padding: 11px 16px 13px; border-top: 1px solid var(--hair); background: color-mix(in srgb, var(--brand-neumann-green) 6%, var(--surface)); color: var(--ink-2); font-size: 11.5px; line-height: 1.35; letter-spacing: 0.1px; }
+.assistant-advisory svg { flex: 0 0 auto; color: var(--brand-neumann-green); }
+.assistant-advisory strong { font-weight: 700; }
+
+/* Richer assistant replies: a labelled avatar, headings, emphasised figures, softer bubble. */
+.assistant-by { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 1px 2px; font-size: 11px; font-weight: 800; letter-spacing: 0.3px; text-transform: uppercase; color: var(--brand-neumann-green); }
+.from-assistant .assistant-bubble { border: 1px solid color-mix(in srgb, var(--brand-neumann-green) 14%, var(--hair)); background: linear-gradient(180deg, color-mix(in srgb, var(--brand-neumann-green) 4%, var(--surface)), var(--surface)); border-radius: 4px var(--r-md) var(--r-md) var(--r-md); }
+.assistant-bubble .assistant-h { margin: 10px 0 4px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.1px; color: var(--ink-2); }
+.assistant-bubble .assistant-h:first-child { margin-top: 0; }
+.assistant-bubble .fig { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink-2); }
+.from-assistant .assistant-bubble ul { list-style: none; padding-left: 2px; }
+.from-assistant .assistant-bubble li { position: relative; padding-left: 15px; }
+.from-assistant .assistant-bubble li::before { content: ""; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand-neumann-green); }
+.from-assistant .assistant-bubble ol { padding-left: 18px; }
+.from-assistant .assistant-bubble ol li { padding-left: 2px; }
+.from-assistant .assistant-bubble ol li::before { content: none; }
+.from-assistant .assistant-bubble ol li::marker { color: var(--brand-neumann-green); font-weight: 700; }
 
 /* Reports › Zones: bags per bay on each Ibero building's floor plan. */
 .zone-map-wrap { overflow-x: auto; }

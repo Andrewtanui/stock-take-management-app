@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeftRight, RotateCcw, Send, Shuffle, TriangleAlert } from "lucide-react";
-import { allocate, buildAreas, ruleBreaks, type AllocCounter, type Area, type Plan } from "../data/allocate";
+import { allocate, buildAreas, rebalanceAllocation, ruleBreaks, rng, shuffle, type AllocCounter, type Area, type Plan } from "../data/allocate";
+import { lineInScope } from "../data/scope";
 import { SITES, allLines, can } from "../data/repository";
 import { useStore } from "../data/store";
 import type { AllocationChange, CounterProfile, CountRow, SiteCode } from "../data/types";
@@ -57,7 +58,9 @@ function AllocateTab() {
   const [busy, setBusy] = useState(false);
 
   const thirdParty = useMemo(() => new Set(SITES.filter((s) => s.thirdParty).map((s) => s.code)), []);
-  const lines = useMemo(() => allLines().map((l) => ({ wh: l.wh, z: l.z, bg: l.bg })), []);
+  // Only the stock take's scope is allocated: an ad hoc on row A hands out row A, never the whole warehouse.
+  const scope = st?.scope;
+  const lines = useMemo(() => allLines().filter((l) => lineInScope(scope, l.wh, l.z)).map((l) => ({ wh: l.wh, z: l.z, bg: l.bg })), [scope]);
   const counterOf = (p: CounterProfile, closed = false): AllocCounter => ({
     id: p.userId,
     name: p.name,
@@ -80,7 +83,8 @@ function AllocateTab() {
     const fixed: { counterId: string; area: Area }[] = [];
     const rest: Area[] = [];
     const placed = new Map<SiteCode, Set<string>>();
-    for (const a of buildAreas(lines, counters.length, thirdParty, siteName)) {
+    const built = buildAreas(lines, counters.length, thirdParty, siteName);
+    for (const a of built) {
       const tally = new Map<string, number>();
       for (const c of store.counts) {
         if (hasLayout(a.site) ? c.site !== a.site || !zoneInSection(c.stack, a.section, a.site) : c.site !== a.site) continue;
@@ -98,32 +102,53 @@ function AllocateTab() {
     }
     const nameOf = (id: string) => profiles.find((p) => p.userId === id)?.name ?? store.allocation.people.find((p) => p.id === id)?.name ?? "Counter";
     const gone = [...new Set(fixed.map((f) => f.counterId))].filter((id) => !present.has(id)).map((id) => ({ id, name: nameOf(id), closed: true }) as AllocCounter);
-    const next = fixed.length
-      ? allocate({ lines, counters: [...counters, ...gone], rules, thirdParty, siteName, areas: rest, fixed })
-      : allocate({ lines, counters, rules, thirdParty, siteName });
-    if (fixed.length) next.warnings = [`${fixed.length} area(s) already counted stay with whoever counted them.`, ...next.warnings];
+    let next: Plan;
+    if (fixed.length) {
+      next = allocate({ lines, counters: [...counters, ...gone], rules, thirdParty, siteName, areas: rest, fixed });
+      next.warnings = [`${fixed.length} area(s) already counted stay with whoever counted them.`, ...next.warnings];
+    } else {
+      // Auto-cap: a scope splits into only so many non-overlapping areas; if more counters are present
+      // than that, only as many as there are areas are needed and the rest sit this count out (picked at random).
+      let used = counters;
+      let spare: AllocCounter[] = [];
+      if (built.length < counters.length) {
+        const sh = shuffle(counters, rng(Math.floor(Math.random() * 2 ** 31)));
+        used = sh.slice(0, built.length);
+        spare = sh.slice(built.length);
+      }
+      next = allocate({ lines, counters: used, rules, thirdParty, siteName, areas: built });
+      if (spare.length) {
+        next.rows = [...next.rows, ...spare.map((c) => ({ counterId: c.id, name: c.name, areas: [], bags: 0 }))].sort((a, b) => a.name.localeCompare(b.name));
+        next.warnings = [
+          `This scope splits into ${built.length} area(s); ${spare.length} of ${counters.length} counters aren't needed for it (${spare.map((c) => c.name).join(", ")}). Untick them, or widen the scope.`,
+          ...next.warnings,
+        ];
+      }
+    }
     setPlan(next);
     setMode("new");
     setChanges(fixed.length ? [{ at: now(), by: store.me, what: `Counting has started: ${fixed.length} counted area(s) kept with their counters, ${rest.length} shared out at random` }] : []);
     setPick([]);
   };
 
-  /** Keeps counted areas with whoever has them; shares out the rest among those present. */
+  /**
+   * Keeps the bays each counter has already counted with them, and shares every **uncounted** bay out
+   * again — re-split for the counters here now — so a tired counter's unreached bays go to the others,
+   * even in a row they'd started. Someone not here keeps what they counted and gets nothing new.
+   */
   const rebalance = () => {
     if (!published) return;
-    const counted = (row: Plan["rows"][number], a: Area) =>
-      hasLayout(a.site) ? store.counts.some((c) => c.site === a.site && zoneInSection(c.stack, a.section, a.site)) : store.counts.some((c) => c.site === a.site && c.by === row.name);
-    const fixed: { counterId: string; area: Area }[] = [];
-    const rest: Area[] = [];
-    for (const row of published.plan.rows) for (const a of row.areas) (counted(row, a) ? fixed.push({ counterId: row.counterId, area: a }) : rest.push(a));
+    const idOf = (c: CountRow) => c.byId ?? profiles.find((p) => p.name === c.by)?.userId ?? store.allocation.people.find((p) => p.name === c.by)?.id;
+    const nameOf = (id: string) => profiles.find((p) => p.userId === id)?.name ?? store.allocation.people.find((p) => p.id === id)?.name ?? "Counter";
+    const counts = store.counts
+      .map((c) => ({ counterId: idOf(c), site: c.site, zone: hasLayout(c.site) ? c.stack : undefined }))
+      .filter((c): c is { counterId: string; site: SiteCode; zone: string | undefined } => !!c.counterId);
     const presentCounters = active.filter((p) => present.has(p.userId)).map((p) => counterOf(p));
-    // Counters who left keep what they counted but get nothing new.
-    const gone = published.plan.rows
-      .filter((r) => !present.has(r.counterId) && fixed.some((f) => f.counterId === r.counterId))
-      .map((r) => ({ id: r.counterId, name: r.name, closed: true }) as AllocCounter);
-    setPlan(allocate({ lines, counters: [...presentCounters, ...gone], rules, thirdParty, siteName, areas: rest, fixed }));
+    const next = rebalanceAllocation({ lines, counts, present: presentCounters, nameOf, rules, thirdParty, siteName });
+    setPlan(next);
     setMode("rebalance");
-    setChanges([{ at: now(), by: store.me, what: `Rebalanced ${published.name}: ${fixed.length} counted area(s) kept, ${rest.length} shared out again` }]);
+    const kept = counts.length;
+    setChanges([{ at: now(), by: store.me, what: `Rebalanced ${published.name}: counted bays kept, uncounted bays re-split among ${presentCounters.length} counter(s) here` + (kept ? "" : " (nothing counted yet)") }]);
     setPick([]);
   };
 

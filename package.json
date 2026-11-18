@@ -12,6 +12,7 @@
     "dv:roles": "node scripts/dataverse/create-roles.mjs",
     "check:shared": "node scripts/check-shared.mjs",
     "test:allocate": "node scripts/test-allocate.mjs",
+    "test:auction": "node scripts/test-auction.mjs",
     "xbs:zones": "node scripts/xbs/import-zones.mjs",
     "dv:seed": "node scripts/dataverse/seed.mjs",
     "dev:dv": "vite --mode dataverse",

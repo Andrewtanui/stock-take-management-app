@@ -1,6 +1,5 @@
 {
   "version": "1.0",
-  "appId": "415dbc66-f07f-4819-8995-337876f7c185",
   "appDisplayName": "Stock Take Management App",
   "region": "prod",
   "appType": "CodeApp",
@@ -10,20 +9,6 @@
   "buildEntryPoint": "index.html",
   "localAppUrl": "http://localhost:3001",
   "logoPath": "Default",
-  "connectionReferences": {
-    "be3ff55a-3c98-489c-8715-e27f7f853434": {
-      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
-      "displayName": "Logic flows",
-      "dataSources": [
-        "ibkyf11_hubasksthestockassistant"
-      ],
-      "workflowDetails": {
-        "workflowEntityId": "1c74e5c4-c6d1-f111-a05a-7ced8d4931c7",
-        "workflowDisplayName": "IBKY F11 · Hub asks the Stock Assistant",
-        "workflowName": "1c74e5c4-c6d1-f111-a05a-7ced8d4931c7"
-      }
-    }
-  },
   "databaseReferences": {
     "default.cds": {
       "dataSources": {
@@ -209,6 +194,21 @@
         }
       },
       "environmentVariableName": ""
+    }
+  },
+  "appId": "415dbc66-f07f-4819-8995-337876f7c185",
+  "connectionReferences": {
+    "be3ff55a-3c98-489c-8715-e27f7f853434": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "ibkyf11_hubasksthestockassistant"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "1c74e5c4-c6d1-f111-a05a-7ced8d4931c7",
+        "workflowDisplayName": "IBKY F11 · Hub asks the Stock Assistant",
+        "workflowName": "1c74e5c4-c6d1-f111-a05a-7ced8d4931c7"
+      }
     }
   }
 }

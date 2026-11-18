@@ -15,7 +15,7 @@
 // 4. Many random attempts; the best wins: nothing unassigned, fewest rotation
 //    repeats, fewest people at two warehouses, then the most even workload.
 
-import { LAYOUT_SITES, hasLayout, layoutOf, parseZone, sectionRows, sectionToken, sectionWords, sortSections, zoneFits } from "../shared/sections";
+import { LAYOUT_SITES, hasLayout, layoutOf, parseSection, parseZone, sectionRows, sectionToken, sectionWords, sortSections, zoneFits } from "../shared/sections";
 import type { SiteCode } from "./types";
 
 export interface AllocLine {
@@ -88,7 +88,7 @@ export function rng(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function shuffle<T>(xs: T[], rand: () => number) {
+export function shuffle<T>(xs: T[], rand: () => number) {
   const a = [...xs];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
@@ -269,6 +269,115 @@ export function allocate(input: {
     .map((c) => ({ counterId: c.id, name: c.name, areas: b.given.get(c.id)!, bags: Math.round(b.load.get(c.id)!) }))
     .sort((x, y) => x.name.localeCompare(y.name));
   return { seed: b.seed, rows, unassigned: b.unassigned, spreadPct: Math.round(b.spreadPct * 10) / 10, rotationRepeats: b.repeats, multiSite: b.multiSite, warnings, rules };
+}
+
+/**
+ * Rebalance in progress: hand the **uncounted** work out again among the counters here, re-split for
+ * how many are present now (not the chunks the first plan happened to make). Counted work stays with
+ * whoever counted it — judged per **bay**, so the bays a counter hasn't reached yet in a row they
+ * started are freed and shared out, while their done bays stay theirs. A counter who isn't here keeps
+ * what they counted and gets nothing new.
+ *
+ * `counts` = one entry per saved count line (its counter and, at an Ibero building, its location).
+ */
+export function rebalanceAllocation(input: {
+  lines: AllocLine[];
+  counts: { counterId: string; site: SiteCode; zone?: string }[];
+  present: AllocCounter[];
+  nameOf: (id: string) => string;
+  rules: AllocRules;
+  thirdParty: Set<SiteCode>;
+  siteName: (c: SiteCode) => string;
+  seed?: number;
+  attempts?: number;
+}): Plan {
+  const { lines, counts, present, nameOf, rules, thirdParty, siteName } = input;
+  const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => m.set(k, [...(m.get(k) ?? []), v]);
+  const bayKey = (site: SiteCode, z: string) => {
+    const p = parseZone(z)!;
+    return `${site}|${p.row}|${p.rowTo}|${p.bay}`;
+  };
+
+  // Bags XBS expects per bay (Ibero) and per third-party site.
+  const bayBags = new Map<string, number>();
+  const siteBags = new Map<SiteCode, number>();
+  for (const l of lines) {
+    if (hasLayout(l.wh)) {
+      if (l.z && zoneFits(l.z, l.wh)) bayBags.set(bayKey(l.wh, l.z), (bayBags.get(bayKey(l.wh, l.z)) ?? 0) + l.bg);
+    } else siteBags.set(l.wh, (siteBags.get(l.wh) ?? 0) + l.bg);
+  }
+
+  // Who counted each bay / started each third-party site (most count lines wins).
+  const bayTally = new Map<string, Map<string, number>>();
+  const siteTally = new Map<SiteCode, Map<string, number>>();
+  const bump = (t: Map<string, number>, id: string) => t.set(id, (t.get(id) ?? 0) + 1);
+  for (const c of counts) {
+    if (hasLayout(c.site)) {
+      if (!c.zone || !zoneFits(c.zone, c.site)) continue;
+      const k = bayKey(c.site, c.zone);
+      bump(bayTally.get(k) ?? bayTally.set(k, new Map()).get(k)!, c.counterId);
+    } else bump(siteTally.get(c.site) ?? siteTally.set(c.site, new Map()).get(c.site)!, c.counterId);
+  }
+  const owner = (t: Map<string, number>) => [...t.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+  // Uncounted work only: bays with no count, third-party sites not started. Re-split for the present crew.
+  const uncountedLines = lines.filter((l) =>
+    hasLayout(l.wh) ? !(l.z && zoneFits(l.z, l.wh) && bayTally.has(bayKey(l.wh, l.z))) : !siteTally.has(l.wh),
+  );
+
+  // Counted work stays with its counter: Ibero bays grouped into contiguous runs, each a kept section.
+  const fixed: { counterId: string; area: Area }[] = [];
+  const byOwner = new Map<string, { site: SiteCode; row: string; rowTo: string; bay: number }[]>();
+  for (const [key, t] of bayTally) {
+    const [site, row, rowTo, bay] = key.split("|");
+    push(byOwner, owner(t), { site: site as SiteCode, row, rowTo, bay: +bay });
+  }
+  const runs = (ns: number[]): [number, number][] => {
+    const out: [number, number][] = [];
+    for (const nb of [...new Set(ns)].sort((a, b) => a - b)) {
+      const last = out[out.length - 1];
+      if (last && nb === last[1] + 1) last[1] = nb;
+      else out.push([nb, nb]);
+    }
+    return out;
+  };
+  for (const [counterId, bays] of byOwner) {
+    const groups = new Map<string, number[]>();
+    for (const b of bays) push(groups, `${b.site}|${b.row}|${b.rowTo}`, b.bay);
+    for (const [k, nums] of groups) {
+      const [site, row, rowTo] = k.split("|");
+      for (const [from, to] of runs(nums)) {
+        let bags = 0;
+        for (let b = from; b <= to; b++) bags += bayBags.get(`${site}|${row}|${rowTo}|${b}`) ?? 0;
+        const section = sectionToken(row, rowTo, from, to, site);
+        fixed.push({ counterId, area: { key: `${site}:${section}`, site: site as SiteCode, section, bags, label: words(site as SiteCode, section, siteName) } });
+      }
+    }
+  }
+  for (const [site, t] of siteTally) fixed.push({ counterId: owner(t), area: { key: site, site, section: "", bags: siteBags.get(site) ?? 0, label: words(site, "", siteName) } });
+
+  const hereIds = new Set(present.map((c) => c.id));
+  const gone = [...new Set(fixed.map((f) => f.counterId))].filter((id) => !hereIds.has(id)).map((id) => ({ id, name: nameOf(id), closed: true }) as AllocCounter);
+
+  // Clamp each fresh area to the bays that actually have uncounted stock, so a section's token never
+  // spans the counted bays a neighbour kept (buildAreas splits over the whole row's bay range).
+  const uncountedBays = new Map<string, Set<number>>();
+  for (const l of uncountedLines) {
+    if (!hasLayout(l.wh) || !l.z || !zoneFits(l.z, l.wh)) continue;
+    const p = parseZone(l.z)!;
+    const k = `${l.wh}|${p.row}|${p.rowTo}`;
+    (uncountedBays.get(k) ?? uncountedBays.set(k, new Set()).get(k)!).add(p.bay);
+  }
+  const tight = (a: Area): Area => {
+    const s = hasLayout(a.site) ? parseSection(a.section, a.site) : null;
+    if (!s) return a;
+    const inRange = [...(uncountedBays.get(`${a.site}|${s.row}|${s.rowTo}`) ?? [])].filter((b) => b >= s.bayFrom && b <= s.bayTo).sort((x, y) => x - y);
+    if (!inRange.length || (inRange[0] === s.bayFrom && inRange[inRange.length - 1] === s.bayTo)) return a;
+    const section = sectionToken(s.row, s.rowTo, inRange[0], inRange[inRange.length - 1], a.site);
+    return { ...a, section, key: `${a.site}:${section}`, label: words(a.site, section, siteName) };
+  };
+  const areas = buildAreas(uncountedLines, present.length, thirdParty, siteName).map(tight);
+  return allocate({ lines: uncountedLines, counters: [...present, ...gone], rules, thirdParty, siteName, areas, fixed, seed: input.seed, attempts: input.attempts });
 }
 
 /** Rules a set of areas breaks for a counter (used to flag a supervisor's swap). */

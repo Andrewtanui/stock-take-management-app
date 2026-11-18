@@ -9,7 +9,7 @@
 // Physical lots are placed in a basket through their XBS line (batch, else
 // outturn); lots XBS doesn't know go to "No basket".
 
-import { allLines, basketMap, comtrasPosition, SITES } from "./repository";
+import { allLines, basketMap, comtrasPosition, PACK_TYPES, SITES } from "./repository";
 import { comparable, currentCounts } from "./reports";
 import type { BasketMap, CountRow, PrimaryBasket, ReconItem, Site, StackInfo, XbsLine } from "./types";
 
@@ -31,6 +31,8 @@ export interface ReconRow {
   /** XBS for the part that has been counted — what Physical is compared with. */
   xbs: number;
   physical: number;
+  /** Physical in the bags as actually packed (LIGHTS in 50 kg bags) — Finance's basis. */
+  physicalPack?: number;
   /** Comtras, when an extract is loaded. */
   comtras?: number;
   /** Share of xbsWhole that has been compared (0–1). */
@@ -38,6 +40,11 @@ export interface ReconRow {
 }
 
 const eq = (kg: number) => kg / 60;
+/** Bags in the pack as actually counted: LIGHTS in 50 kg bags, the rest in 60 kg — Finance's basis. */
+const packKgOf = (grade: string) => {
+  const hit = PACK_TYPES.find((p) => p.grades && new RegExp(p.grades, "i").test(grade));
+  return hit ? hit.kg : PACK_TYPES.find((p) => !p.grades)?.kg ?? 60;
+};
 const NO_BASKET = "—";
 
 function prepare(input: ReconInput) {
@@ -79,7 +86,7 @@ export function threeWay(input: ReconInput) {
     let r = sec.get(code);
     if (!r) {
       const b = map.get(code);
-      r = { key: code, label: b ? `${code} ${b.name}` : "No basket", primary: b?.primary ?? "FAQ", xbsWhole: 0, xbs: 0, physical: 0, cover: 0 };
+      r = { key: code, label: b ? `${code} ${b.name}` : "No basket", primary: b?.primary ?? "FAQ", xbsWhole: 0, xbs: 0, physical: 0, physicalPack: 0, cover: 0 };
       sec.set(code, r);
     }
     return r;
@@ -89,7 +96,11 @@ export function threeWay(input: ReconInput) {
     r.xbsWhole += eq(l.kg);
     if (inScope(l)) r.xbs += eq(l.kg);
   }
-  for (const c of counts) row(basketOf(c)).physical += eq(c.kg);
+  for (const c of counts) {
+    const r = row(basketOf(c));
+    r.physical += eq(c.kg);
+    r.physicalPack = (r.physicalPack ?? 0) + c.kg / packKgOf(c.grade);
+  }
   if (ctr) {
     // Comtras codes with no XBS stock (e.g. the primary codes 10057 / 10027) take their basket from
     // the mapping; codes the mapping doesn't have stay visible as "Not mapped", never dropped.
@@ -99,8 +110,8 @@ export function threeWay(input: ReconInput) {
       sec.set(
         code,
         b
-          ? { key: code, label: `${code} ${b.name}`, primary: b.primary, xbsWhole: 0, xbs: 0, physical: 0, cover: 0 }
-          : { key: code, label: `${code} (in Comtras, not in the mapping)`, primary: NOT_MAPPED, xbsWhole: 0, xbs: 0, physical: 0, cover: 0 },
+          ? { key: code, label: `${code} ${b.name}`, primary: b.primary, xbsWhole: 0, xbs: 0, physical: 0, physicalPack: 0, cover: 0 }
+          : { key: code, label: `${code} (in Comtras, not in the mapping)`, primary: NOT_MAPPED, xbsWhole: 0, xbs: 0, physical: 0, physicalPack: 0, cover: 0 },
       );
     }
     for (const r of sec.values()) r.comtras = ctr.get(r.key) ?? 0;
@@ -116,6 +127,7 @@ export function threeWay(input: ReconInput) {
       xbsWhole: sum(xs, (x) => x.xbsWhole),
       xbs: sum(xs, (x) => x.xbs),
       physical: sum(xs, (x) => x.physical),
+      physicalPack: sum(xs, (x) => x.physicalPack ?? 0),
       comtras: hasComtras ? sum(xs, (x) => x.comtras ?? 0) : undefined,
       cover: 0,
     });
@@ -194,6 +206,7 @@ function totalOf(rows: ReconRow[], hasComtras: boolean) {
     xbsWhole,
     xbs,
     physical,
+    physicalPack: sum(rows, (r) => r.physicalPack ?? 0),
     comtras: hasComtras ? sum(rows, (r) => r.comtras ?? 0) : undefined,
     gross: sum(rows, (r) => Math.abs(r.physical - r.xbs)),
     cover: xbsWhole ? xbs / xbsWhole : 0,

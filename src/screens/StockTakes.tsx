@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { IMPORTS, chainFor, SITES, allLines, can, site } from "../data/repository";
 import { lineInScope, scopeWords, shortType, type StockScope } from "../data/scope";
-import { IBERO_ROWS, parseSection, sectionList, sectionsWords } from "../shared/sections";
+import { hasLayout, IBERO_ROWS, parseSection, sectionList, sectionsWords } from "../shared/sections";
 import { useStore } from "../data/store";
 import type { SiteCode, StockTakeType } from "../data/types";
 import { Chip, Dialog, PageHead, ReadOnly, Tabs, n, type Tone } from "../ui/kit";
@@ -145,15 +145,17 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
   const [day, setDay] = useState(() => dayFor("Monthly stock take"));
   const date = day ? day.split("-").reverse().join("/") : "";
   const title = `${shortType(type)} Stock Take - ${date}`;
-  const chosen = all ? SITES.map((s) => s.code) : sites;
-  // Ad hoc: chosen warehouses and, at Ibero, whole rows and/or typed sections ("D1-7, C/D").
   const adhoc = type === "Ad hoc stock take";
+  // Ad hoc counts Ibero only (Export Warehouse / Mill Export), never third-party sites.
+  const IBERO = SITES.filter((s) => hasLayout(s.code)).map((s) => s.code);
+  // Ad hoc: Ibero whole rows and/or typed sections ("D1-7, C/D"). Monthly / 100%: chosen warehouses.
+  const chosen = adhoc ? IBERO : all ? SITES.map((s) => s.code) : sites;
   const [rows, setRows] = useState<string[]>([]);
   const [more, setMore] = useState("");
   const typed = more.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
   const badTokens = typed.filter((x) => !parseSection(x));
   const sections = [...new Set([...rows, ...sectionList(more)])];
-  const scope: StockScope | undefined = adhoc ? { sites: chosen, sections: chosen.includes("IBR") ? sections : [] } : undefined;
+  const scope: StockScope | undefined = adhoc ? { sites: IBERO, sections } : undefined;
   const lots = adhoc ? allLines().filter((l) => lineInScope(scope, l.wh, l.z)).length : 0;
   // The Hub works on one open stock take at a time: an ad hoc count would hide one still being signed.
   const open = store.stockTakes.find((x) => x.status !== "Completed");
@@ -177,7 +179,7 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
         )}
         {adhoc && (
           <p className="hint">
-            Any day, to see where stock stands before month-end. Count chosen rows or warehouses; the Hub shows the differences only: no recounts, no
+            Any day, to see where stock stands before month-end. Counts Ibero only, by chosen rows or sections; the Hub shows the differences only: no recounts, no
             exceptions, a short sign-off (Operations Lead, then Warehouse Manager), and it isn't part of the monthly KPIs.
           </p>
         )}
@@ -200,32 +202,34 @@ function NewStockTake({ onClose }: { onClose: () => void }) {
           {usable.length ? "Only imports that passed the checks are listed. Upload a newer one in XBS import." : "No XBS import yet. Import the XBS reports first."}
         </span>
       </label>
-      <fieldset className="field">
-        <legend className="field-label">Warehouses</legend>
-        <div className="seg">
-          <button type="button" aria-pressed={all} onClick={() => setAll(true)}>
-            All
-          </button>
-          <button type="button" aria-pressed={!all} onClick={() => setAll(false)}>
-            Selected
-          </button>
-        </div>
-        {!all && (
-          <div className="checks-grid">
-            {SITES.map((s) => (
-              <label key={s.code} className="check-line">
-                <input
-                  type="checkbox"
-                  checked={sites.includes(s.code)}
-                  onChange={(e) => setSites((xs) => (e.target.checked ? [...xs, s.code] : xs.filter((x) => x !== s.code)))}
-                />
-                {s.name}
-              </label>
-            ))}
+      {!adhoc && (
+        <fieldset className="field">
+          <legend className="field-label">Warehouses</legend>
+          <div className="seg">
+            <button type="button" aria-pressed={all} onClick={() => setAll(true)}>
+              All
+            </button>
+            <button type="button" aria-pressed={!all} onClick={() => setAll(false)}>
+              Selected
+            </button>
           </div>
-        )}
-      </fieldset>
-      {adhoc && chosen.includes("IBR") && (
+          {!all && (
+            <div className="checks-grid">
+              {SITES.map((s) => (
+                <label key={s.code} className="check-line">
+                  <input
+                    type="checkbox"
+                    checked={sites.includes(s.code)}
+                    onChange={(e) => setSites((xs) => (e.target.checked ? [...xs, s.code] : xs.filter((x) => x !== s.code)))}
+                  />
+                  {s.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </fieldset>
+      )}
+      {adhoc && (
         <fieldset className="field">
           <legend className="field-label">Ibero: what to count</legend>
           <div className="checks-grid">

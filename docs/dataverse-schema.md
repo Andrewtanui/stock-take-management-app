@@ -1,11 +1,14 @@
 # Dataverse schema — IBKY Stock Take
 
-Status: **live in the development environment** (built 9 Oct 2026, last changed
-4 Nov 2026: tables 33 `stk_transferline` and 34 `stk_weighticket`, XBS's stock transfers and weighbridge tickets) and in
-**NKG_Demo** (last updated 5 Nov: same tables, choices, roles, sites and apps as dev, including tables 33-34, their
-roles and the Hub's two new data sources). Only in dev so far: nothing.
+Status: **live in three environments** — the Pathways **development** environment (built 9 Oct 2026, last schema
+change 4 Nov 2026: tables 33 `stk_transferline` and 34 `stk_weighticket`, XBS's stock transfers and weighbridge
+tickets), **NKG_Demo** (last updated 5 Nov: same tables, choices, roles, sites and apps as dev, including tables
+33-34, their roles and the Hub's two new data sources) and, since this week's user-acceptance test, **NKG East
+Africa (EA)** — the live NKG tenant (automation account `automation.nkgea@nkg.coffee`), which also holds Jones'
+agent engine on its own separate 47 `ibky_` tables alongside our 35 `stk_` tables. All three environments carry the
+same `stk_` schema described here. Only in dev so far: nothing.
 
-Data, as of 5 Nov 2026:
+Data in dev & NKG_Demo, as of 5 Nov 2026:
 - **August:** NKG_Demo holds the copy of dev's August month-end made on 26 Oct.
 - **September:** loaded separately in each environment from the same files (3 Nov), so record ids and exception numbers
   differ. In NKG_Demo it is signed and Completed.
@@ -15,6 +18,17 @@ Data, as of 5 Nov 2026:
   Level 2 uploads (P526, 537 Aug + Oct, tracker, XBS shipped report, sub-products, transfers and tickets). Its two
   test sign-offs were deleted in both on 6 Nov and its status set back to Reconciliation, so October has no
   sign-offs yet. Recount answers loaded later go into both.
+
+Data in EA, as of 12 Nov 2026 (verified live): **August, September and October are all loaded and Completed**, each
+signed through all six monthly gates (18 sign-offs in all). A live **Ad hoc Stock Take (11/11/2026)** is in **Count in
+progress** for the counter-app UAT, on its own XBS import (IMP-261111-0854, 895 rows, the current Imported one; the
+three monthly imports are Superseded). Headline counts: 2,667 XBS lines, 580 Comtras positions, 3,090 contract-invoice
+lines, 3,799 shipments, 124 stuffing rows, 208 sub-products, 1,656 count lines, 1,563 variances, 84 recounts, 40
+exceptions, 21 reconciling items, 48 KPI snapshots; 11 counter profiles and 10 allocation runs. **Level 1 runs as
+`Hub` with 0 engine runs** — Jones' server engine is not yet driving Level 1 here, so reconciliation still refreshes
+when the Hub is opened (see table 25). **Known data debt:** 339 of 352 count sheets are empty (0 count lines) — orphan
+sheets left by the counter-app save failures during the UAT (the app-side hardening fix has since been pushed); to be
+cleared once counting pauses.
 
 Flows in NKG_Demo are saved but switched off until its connections exist. This document describes what exists in
 Dataverse today.
@@ -36,6 +50,7 @@ flows react to changes in them.
 | Notes (files) | Enabled on `stk_countline` and `stk_issue` (photos) and `stk_stocktake` (Level 1 summary PDF) |
 | Security roles | 9 `STK …` roles (7 for people, STK Engine and STK Level 1 Engine for application users), see [security-roles.md](security-roles.md). Every user also needs the built-in **Basic User** role |
 | NKG copy | NKG_Demo · `61203bbf-8829-e6fd-bbdd-bb98d7fa1d56` · https://orged86d520.crm4.dynamics.com/ |
+| NKG East Africa (EA) | `e4df65cd-90c0-e484-8d4a-15a3ab58a14c` · https://org505f9402.crm4.dynamics.com/ · NKG tenant `321a398d-e261-4d65-adec-c9cc85f02498` · automation account `automation.nkgea@nkg.coffee` (own MSAL cache, `ea-tmp/ea-auth.mjs`) |
 
 ## How to look at it
 

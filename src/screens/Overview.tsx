@@ -12,7 +12,8 @@ const STAGES = ["Set up", "Count", "Approve counts", "Reconcile", "Sign-off", "C
 export default function Overview() {
   const go = useNav();
   const store = useStore();
-  const st = store.stockTakes[0];
+  // The stock take being viewed (a past one when "viewing"), not always the current one.
+  const st = store.stockTakes.find((s) => s.id === store.activeStockTake) ?? store.stockTakes[0];
   if (!st)
     return (
       <div className="page">
@@ -176,7 +177,8 @@ export default function Overview() {
 function ReconChain() {
   const go = useNav();
   const store = useStore();
-  const st = store.stockTakes[0];
+  // The stock take being viewed (a past one when "viewing"), not always the current one.
+  const st = store.stockTakes.find((s) => s.id === store.activeStockTake) ?? store.stockTakes[0];
   const close = store.countClose;
   if (!st) return null;
   const closed = !!close?.closedAt;

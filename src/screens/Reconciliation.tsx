@@ -120,7 +120,8 @@ export default function Reconciliation() {
                 <th>{pb ? "Secondary basket" : "Primary basket"}</th>
                 <th className="num">XBS, whole</th>
                 <th className="num">XBS, counted part</th>
-                <th className="num">Physical</th>
+                <th className="num">Physical, 60 kg eq</th>
+                <th className="num">Physical (Finance)</th>
                 <th className="num">Physical − XBS</th>
                 <th className="num">Coverage</th>
                 <th className="num">Comtras</th>
@@ -175,6 +176,7 @@ function Cells({ r }: { r: ReconRow }) {
       <td className="num">{n(r.xbsWhole, 1)}</td>
       <td className="num">{counted ? n(r.xbs, 1) : <span className="muted">not counted</span>}</td>
       <td className="num">{counted ? n(r.physical, 1) : "—"}</td>
+      <td className="num">{counted ? n(r.physicalPack ?? r.physical, 1) : "—"}</td>
       <td className="num">{counted ? <Diff value={r.physical - r.xbs} d={1} /> : "—"}</td>
       <td className="num">{pct(r.cover)}</td>
       <td className="num">{r.comtras === undefined ? "—" : n(r.comtras, 1)}</td>
@@ -237,6 +239,7 @@ function totalRow(rows: ReconRow[], hasComtras: boolean): ReconRow {
     xbsWhole,
     xbs,
     physical: sum(rows, (r) => r.physical),
+    physicalPack: sum(rows, (r) => r.physicalPack ?? 0),
     comtras: hasComtras ? sum(rows, (r) => r.comtras ?? 0) : undefined,
     cover: xbsWhole ? xbs / xbsWhole : 0,
   };
@@ -246,7 +249,8 @@ const COLS = (hasComtras: boolean) => [
   { key: "basket", label: "Basket" },
   { key: "xbsWhole", label: "XBS, whole (eq60)", kind: "num1" as const },
   { key: "xbs", label: "XBS, counted part (eq60)", kind: "num1" as const },
-  { key: "physical", label: "Physical (eq60)", kind: "num1" as const },
+  { key: "physical", label: "Physical, 60 kg eq", kind: "num1" as const },
+  { key: "physicalPack", label: "Physical (Finance)", kind: "num1" as const },
   { key: "diff", label: "Physical − XBS (eq60)", kind: "num1" as const },
   { key: "cover", label: "Coverage", kind: "pct" as const },
   ...(hasComtras
@@ -261,6 +265,7 @@ const toRow = (r: ReconRow) => ({
   xbsWhole: r.xbsWhole,
   xbs: r.xbs,
   physical: r.physical,
+  physicalPack: r.physicalPack ?? r.physical,
   diff: r.physical - r.xbs,
   cover: r.cover,
   comtras: r.comtras,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquareText, RotateCcw, Send, X } from "lucide-react";
+import { MessageSquareText, RotateCcw, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { useStore } from "../data/store";
 import { Chip, type Tone } from "./kit";
 
@@ -52,17 +52,24 @@ const STATUS_TONE: Record<string, Tone> = {
 };
 const STATUS_RE = /\b(ON TARGET|ON TRACK|OFF TARGET|BREACHED|OVERDUE|AT RISK|DUE SOON|FOR INFORMATION|NOT MEASURABLE YET|NOT MEASURABLE)\b/;
 
-/** **bold** and status words inside a line, as React text (never HTML from the agent). */
+/** Numbers that read as figures (thousands, decimals, signed, %, or a weight/bags unit) get quiet emphasis. */
+const FIG_RE = /((?:[+\-−])?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?:[+\-−])?\d+\.\d+|(?:[+\-−])\d+|\d+%|\b\d+(?:\.\d+)?\s?(?:bags?|kg|t)\b)/g;
+const figs = (s: string, key: string) =>
+  s.split(FIG_RE).map((bit, k) => (k % 2 === 1 ? <span key={`${key}-${k}`} className="fig">{bit}</span> : bit));
+
+/** **bold**, status words and figures inside a line, as React text (never HTML from the agent). */
 function inline(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).flatMap((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) return [<strong key={i}>{part.slice(2, -2)}</strong>];
-    return part.split(STATUS_RE).map((bit, j) =>
+    return part.split(STATUS_RE).flatMap((bit, j) =>
       STATUS_TONE[bit] ? (
-        <Chip key={`${i}-${j}`} tone={STATUS_TONE[bit]}>
-          {bit.charAt(0) + bit.slice(1).toLowerCase()}
-        </Chip>
+        [
+          <Chip key={`${i}-${j}`} tone={STATUS_TONE[bit]}>
+            {bit.charAt(0) + bit.slice(1).toLowerCase()}
+          </Chip>,
+        ]
       ) : (
-        bit
+        figs(bit, `${i}-${j}`)
       ),
     );
   });
@@ -71,19 +78,35 @@ function inline(text: string) {
 /** The agent answers in light Markdown: paragraphs, **bold** and "- " bullet lists. */
 function Formatted({ text }: { text: string }) {
   const blocks: JSX.Element[] = [];
-  let bullets: string[] = [];
+  let list: { ordered: boolean; items: string[] } | null = null;
   const flush = () => {
-    if (bullets.length) blocks.push(<ul key={blocks.length}>{bullets.map((b, i) => <li key={i}>{inline(b)}</li>)}</ul>);
-    bullets = [];
+    if (list) {
+      const items = list.items.map((b, i) => <li key={i}>{inline(b)}</li>);
+      blocks.push(list.ordered ? <ol key={blocks.length}>{items}</ol> : <ul key={blocks.length}>{items}</ul>);
+      list = null;
+    }
   };
-  for (const line of text.split("\n")) {
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
-    if (bullet) {
-      bullets.push(bullet[1]);
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    const ul = /^\s*[-*•]\s+(.*)$/.exec(line);
+    const ol = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (ul) {
+      if (!list || list.ordered) flush(), (list = { ordered: false, items: [] });
+      list.items.push(ul[1]);
+      continue;
+    }
+    if (ol) {
+      if (!list || !list.ordered) flush(), (list = { ordered: true, items: [] });
+      list.items.push(ol[1]);
       continue;
     }
     flush();
-    if (line.trim()) blocks.push(<p key={blocks.length}>{inline(line)}</p>);
+    const h = /^#{1,3}\s+(.*)$/.exec(line);
+    const t = line.trim();
+    // A heading (## …) or a short standalone line ending in a colon ("Open exceptions:").
+    if (h) blocks.push(<p key={blocks.length} className="assistant-h">{inline(h[1])}</p>);
+    else if (t && /[^:\s]:$/.test(t) && t.length <= 42) blocks.push(<p key={blocks.length} className="assistant-h">{inline(t.replace(/:$/, ""))}</p>);
+    else if (t) blocks.push(<p key={blocks.length}>{inline(line)}</p>);
   }
   flush();
   return <>{blocks}</>;
@@ -194,6 +217,11 @@ export default function Assistant() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`assistant-msg ${m.from === "you" ? "from-you" : "from-assistant"}${m.failed ? " failed" : ""}`}>
+                {m.from === "assistant" && !m.failed && (
+                  <span className="assistant-by">
+                    <Sparkles size={13} aria-hidden /> Stock Assistant
+                  </span>
+                )}
                 <div className="assistant-bubble">{m.from === "assistant" && !m.failed ? <Formatted text={m.text} /> : m.text}</div>
                 {m.raw && (
                   <details className="assistant-raw">
@@ -236,6 +264,13 @@ export default function Assistant() {
               <Send size={16} aria-hidden />
             </button>
           </form>
+
+          <footer className="assistant-advisory">
+            <ShieldCheck size={15} aria-hidden />
+            <span>
+              <strong>Advisory only.</strong> Confirm with the owner before acting.
+            </span>
+          </footer>
         </aside>
       )}
     </>

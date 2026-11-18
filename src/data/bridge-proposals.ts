@@ -14,6 +14,7 @@
 // The franchise is what is left; Finance types it.
 
 import { AFLOAT_DEFAULT, afloatBags, afloatShipments, type AfloatGroup } from "./afloat";
+import { auctionInTransit, type AuctionLot } from "./auction-parse";
 import type { ComtrasLine } from "./comtras-parse";
 import type { ContractLine } from "./contracts-parse";
 import type { ShipmentLine } from "./shipments-parse";
@@ -60,6 +61,10 @@ export interface ProposalInput {
   counts?: CountRow[];
   /** Finance's afloat rule; until she confirms it, the panel's defaults. */
   afloat?: { groups: AfloatGroup[]; months: number };
+  /** Auction allocation lots (Sale N bought, with invoice/posting date). */
+  auctions?: AuctionLot[];
+  /** Days-before-count window for "recent auction, not yet delivered" (setting PurchaseInTransitDays). */
+  purchaseInTransitDays?: number;
 }
 
 export const LABELS = {
@@ -101,6 +106,24 @@ export function bridgeProposals(p: ProposalInput): Proposal[] {
       onBridge: has(LABELS.afloat),
       similar: alike((i) => i.kind === "Coffee afloat" && i.label !== LABELS.afloat),
     });
+  }
+
+  // Auction purchases bought before the count but invoiced/delivered after it: in the BRIC (Comtras)
+  // total, not yet physically at Ibero. The inbound twin of afloat. One line per sale.
+  if (p.cutOff && p.auctions?.length) {
+    for (const s of auctionInTransit(p.auctions, p.cutOff, p.purchaseInTransitDays)) {
+      const label = `Auction Sale ${s.sale} (bought, not yet at Ibero)`;
+      out.push({
+        label,
+        kind: "Reconciling item",
+        bags: s.bags,
+        inXbs: true,
+        source: `Auction allocation: Sale ${s.sale} ${s.why} (auctioned ${s.auctionDate}); ${s.bags} bags in Comtras not yet at Ibero.`,
+        detail: `Contracts ${s.contracts.join(", ")}${s.invoices.length ? ` · inv ${s.invoices.join(", ")}` : ""}`,
+        onBridge: has(label),
+        similar: alike((i) => i.label !== label && /\bsale\b|auction|\bS_?\d+\b/i.test(i.label)),
+      });
+    }
   }
 
   // The count's items: each lot's difference against XBS, sorted by Finance's rules.

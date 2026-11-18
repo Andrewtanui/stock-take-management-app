@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Search, Sparkles } from "lucide-react";
 import { allLines, can, site } from "../data/repository";
 import { useStore } from "../data/store";
 import type { RootCause, Variance } from "../data/types";
@@ -36,10 +36,14 @@ export default function Variances() {
   const allowed = can(store.role, "Decide variance causes");
   const [filter, setFilter] = useState<Variance["state"] | "all">("open");
   const [causeFilter, setCauseFilter] = useState<RootCause | "all">("all");
+  const [q, setQ] = useState("");
   // The cause on the card: the suggested one until someone picks another.
   const causeOf = (v: Variance) => store.causes[v.id] ?? v.cause;
   const inTab = store.variances.filter((v) => filter === "all" || v.state === filter);
-  const shown = inTab.filter((v) => causeFilter === "all" || causeOf(v) === causeFilter);
+  const query = q.trim().toLowerCase();
+  const shown = inTab
+    .filter((v) => causeFilter === "all" || causeOf(v) === causeFilter)
+    .filter((v) => !query || v.outturn.toLowerCase().includes(query));
   const causeCounts = CAUSES.map((c) => [c, inTab.filter((v) => causeOf(v) === c).length] as const).filter(([c, k]) => k > 0 || c === causeFilter);
   const [selId, setSelId] = useState<string | null>(shown[0]?.id ?? null);
   const sel = store.variances.find((v) => v.id === selId);
@@ -66,18 +70,31 @@ export default function Variances() {
         </div>
       </div>
 
-      <Tabs
-        value={filter}
-        onChange={(f) => {
-          setFilter(f);
-          setSelId(store.variances.find((v) => (f === "all" || v.state === f) && (causeFilter === "all" || causeOf(v) === causeFilter))?.id ?? null);
-        }}
-        items={(["open", "recount", "exception", "accepted", "all"] as const).map((k) => [
-          k,
-          k === "all" ? "All" : STATE[k].label,
-          k === "all" ? store.variances.length : store.variances.filter((v) => v.state === k).length,
-        ])}
-      />
+      <div className="tabsbar">
+        <Tabs
+          value={filter}
+          onChange={(f) => {
+            setFilter(f);
+            setSelId(store.variances.find((v) => (f === "all" || v.state === f) && (causeFilter === "all" || causeOf(v) === causeFilter))?.id ?? null);
+          }}
+          items={(["open", "recount", "exception", "accepted", "all"] as const).map((k) => [
+            k,
+            k === "all" ? "All" : STATE[k].label,
+            k === "all" ? store.variances.length : store.variances.filter((v) => v.state === k).length,
+          ])}
+        />
+        <label className="head-search">
+          <Search size={16} aria-hidden />
+          <input
+            className="input"
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search outturn…"
+            aria-label="Search variances by outturn"
+          />
+        </label>
+      </div>
 
       <fieldset className="causes cause-filter">
         <legend className="field-label">Cause</legend>
@@ -142,7 +159,9 @@ export default function Variances() {
               </li>
             );
           })}
-          {!shown.length && <li className="empty">{causeFilter === "all" ? "Nothing here." : `No "${causeFilter}" variances here.`}</li>}
+          {!shown.length && (
+            <li className="empty">{query ? `No variance with outturn "${q.trim()}".` : causeFilter === "all" ? "Nothing here." : `No "${causeFilter}" variances here.`}</li>
+          )}
         </ul>
 
         {sel && (
